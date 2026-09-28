@@ -1108,8 +1108,13 @@ installChatbot() {
     log "Installing the AI Assistant's Python packages"
     # shellcheck disable=SC1091
     source "$config_dir/env/bin/activate"
-    pip install -r "$eSim_Home/requirements-copilot.txt" \
-        || warn "AI Assistant packages failed to install -- eSim will hide the assistant"
+    # One guarded install per requirements-copilot.txt entry, like PIP_PINS:
+    # a failure names its package and never stops the rest.
+    local spec
+    while read -r spec; do
+        pip install "$spec" \
+            || warn "pip install '$spec' failed -- eSim hides the assistant without it"
+    done < <(grep -vE '^[[:space:]]*(#|$)' "$eSim_Home/requirements-copilot.txt")
     # Microphone input; the venv sees apt packages (--system-site-packages).
     sudo apt-get install -y python3-pyaudio \
         || warn "python3-pyaudio unavailable -- voice input will be disabled"

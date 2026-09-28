@@ -101,7 +101,8 @@ def run_step(tmp_path):
         env_dir = tmp_path / "config" / "env" / "bin"
         env_dir.mkdir(parents=True, exist_ok=True)
         (env_dir / "activate").write_text("")
-        (tmp_path / "requirements-copilot.txt").write_text("ollama\n")
+        (tmp_path / "requirements-copilot.txt").write_text(
+            "# comment\n\nollama>=0.3\nSpeechRecognition>=3.10\n")
 
         script = "\n".join([
             'log()  { echo "LOG $*"; }',
@@ -136,7 +137,10 @@ def test_accepting_installs_packages_and_models(run_step):
     code, out, calls = run_step("y")
 
     assert code == 0 and "STEP-RETURNED" in out
-    assert re.search(r"^pip install -r .*requirements-copilot\.txt$", calls, re.M)
+    # One guarded pip call per requirements-copilot.txt entry (the repo-wide
+    # rule in windows/tests/test_packaging_pins.py), comments skipped.
+    assert re.findall(r"^pip install (.*)$", calls, re.M) == \
+        ["ollama>=0.3", "SpeechRecognition>=3.10"]
     for model in _required_models():
         assert "ollama pull %s" % model in calls
     assert "curl" not in calls  # Ollama already present
