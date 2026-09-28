@@ -30,7 +30,7 @@ from PyQt6.QtWidgets import (
     QWidget, QHBoxLayout, QTextBrowser, QVBoxLayout,
     QLineEdit, QPushButton, QLabel, QComboBox, QApplication,
     QFileDialog, QDialog, QListWidget, QListWidgetItem, QFrame,
-    QScrollArea, QSlider, QInputDialog
+    QScrollArea, QSlider, QInputDialog, QWIDGETSIZE_MAX
 )
 from PyQt6.QtCore import QTimer, Qt, pyqtSignal, QSize, QThread
 from PyQt6.QtGui import QTextCursor, QKeyEvent, QDragEnterEvent, QDropEvent
@@ -388,6 +388,27 @@ def _is_image_file(path: str) -> bool:
     return os.path.splitext(path)[1].lower() in _IMAGE_EXTS
 
 
+def _keep_fixed_button_sizes(root):
+    """Restate every fixed-size button's size in its own stylesheet.
+
+    Inside eSim the application theme gives every QPushButton a large
+    min-width and padding, and a stylesheet min-width overrides
+    setFixedSize(): the small icon buttons balloon to ~100 px and force the
+    chat dock to half the window. A widget's own stylesheet outranks the
+    application's, so repeating the intended size there keeps it.
+    """
+    for btn in root.findChildren(QPushButton):
+        size = btn.maximumSize()
+        if (size.width() >= QWIDGETSIZE_MAX or size.height() >= QWIDGETSIZE_MAX
+                or btn.property("chatSizePinned")):
+            continue
+        btn.setProperty("chatSizePinned", True)
+        btn.setStyleSheet(btn.styleSheet() + (
+            f"\nQPushButton {{ min-width: {size.width()}px;"
+            f" max-width: {size.width()}px; min-height: {size.height()}px;"
+            f" max-height: {size.height()}px; padding: 0; }}"))
+
+
 # ── Smart input field ─────────────────────────────────────────────────────────
 
 class _HistoryLineEdit(QLineEdit):
@@ -559,6 +580,7 @@ class ChatHistoryViewer(QDialog):
         done_btn.clicked.connect(self.accept)
         bot_layout.addWidget(done_btn)
         root.addWidget(bot_bar)
+        _keep_fixed_button_sizes(self)
 
 
 # ── Sidebar ───────────────────────────────────────────────────────────────────
@@ -757,6 +779,7 @@ class _SessionItemWidget(QWidget):
         btn_col.addWidget(self._del_btn)
         btn_col.addStretch()
         outer.addLayout(btn_col)
+        _keep_fixed_button_sizes(self)
 
     def sizeHint(self):
         return QSize(252, 78)
@@ -914,6 +937,7 @@ class ChatSidebar(QWidget):
         self._empty_lbl.setWordWrap(True)
         self._empty_lbl.hide()
         root.addWidget(self._empty_lbl)
+        _keep_fixed_button_sizes(self)
 
     def populate(self):
         self._all_sessions_cache = []
@@ -1423,6 +1447,7 @@ class ChatbotGUI(QWidget):
         staging_outer.addWidget(scroll)
         chat_layout.addWidget(self._staging_area)
 
+        _keep_fixed_button_sizes(self)
         self.move_to_bottom_right()
         self._load_history()
         self._startup_check()
@@ -1757,7 +1782,7 @@ class ChatbotGUI(QWidget):
         self._scroll_to_bottom()
 
     def _on_session_clicked(self, item):
-        session_id = item.data(Qt.UserRole)
+        session_id = item.data(Qt.ItemDataRole.UserRole)
 
         # If this is the session already showing, do nothing.
         if (session_id == self._current_session_id
@@ -2170,7 +2195,8 @@ class ChatbotGUI(QWidget):
             card.setToolTip(
                 f"{os.path.basename(image_path)}\n{orig_w} × {orig_h} px"
             )
-            pix = pix.scaled(68, 36, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+            pix = pix.scaled(68, 36, Qt.AspectRatioMode.KeepAspectRatio,
+                             Qt.TransformationMode.SmoothTransformation)
             thumb_lbl.setPixmap(pix)
         else:
             thumb_lbl.setText("🖼")
@@ -2196,6 +2222,7 @@ class ChatbotGUI(QWidget):
             QPushButton:hover { background:#cc2a22; }
         """)
         remove_btn.clicked.connect(lambda checked=False, p=image_path: self._remove_staged_image(p))
+        _keep_fixed_button_sizes(card)
         return card
 
     def _remove_staged_image(self, path: str):
