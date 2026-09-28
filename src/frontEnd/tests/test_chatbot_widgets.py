@@ -121,3 +121,45 @@ def test_image_thumbnail_scales_real_image(qapp, tmp_path):
     thumbs = [lbl.pixmap() for lbl in card.findChildren(QLabel)
               if not lbl.pixmap().isNull()]
     assert thumbs and thumbs[0].width() <= 68 and thumbs[0].height() <= 36
+
+
+def _debug_error_prompt(monkeypatch, tmp_path, log_text):
+    """Run ChatbotGUI.debug_error on a log and return what it asks the model."""
+    from frontEnd import Chatbot
+
+    project = tmp_path / "proj"
+    project.mkdir()
+    log = project / "ngspice_error.log"
+    log.write_text(log_text)
+    monkeypatch.setattr(
+        Chatbot, "Appconfig",
+        lambda: MagicMock(current_project={"ProjectName": str(project)}))
+    gui = MagicMock()
+
+    Chatbot.ChatbotGUI.debug_error(gui, str(log))
+
+    gui.debug_ollama.assert_called_once()
+    return gui.chat_history[-1]
+
+
+def test_debug_error_keeps_errors_that_come_before_the_banner(monkeypatch, tmp_path):
+    prompt = _debug_error_prompt(monkeypatch, tmp_path, (
+        "Warning: singular matrix:  check node v1#branch\n"
+        "Error: Transient op failed, timestep too small\n"
+        "Note: No compatibility mode selected!\n"
+        "Circuit: * conflicting sources\n"))
+
+    assert "timestep too small" in prompt
+    assert "Circuit:" not in prompt
+
+
+def test_debug_error_sends_whole_log_when_ngspice_stops_early(monkeypatch, tmp_path):
+    # A parse error aborts ngspice before it prints any banner, so the
+    # banner-based trimming would otherwise send the model an empty log.
+    prompt = _debug_error_prompt(monkeypatch, tmp_path, (
+        "Error: unknown subckt: x1 0 c_out v_out lm555n\n"
+        "    in line no. 12 from file rc.cir.out\n"
+        "    Simulation interrupted due to error!\n"))
+
+    assert "unknown subckt" in prompt
+    assert "interrupted due to error" in prompt

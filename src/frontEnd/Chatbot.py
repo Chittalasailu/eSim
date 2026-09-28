@@ -2969,6 +2969,10 @@ class ChatbotGUI(QWidget):
                 else []
             )
             filtered_lines = before_no_compat + between
+            # ngspice stops before printing either banner when parsing fails
+            # (e.g. an unknown subcircuit), so the trim can leave nothing.
+            if not filtered_lines:
+                filtered_lines = lines
             if len(filtered_lines) > _MAX_ERROR_LOG_LINES:
                 truncated_notice = [
                     f"[Log truncated: showing last {_MAX_ERROR_LOG_LINES} "
