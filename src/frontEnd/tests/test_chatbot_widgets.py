@@ -163,3 +163,18 @@ def test_debug_error_sends_whole_log_when_ngspice_stops_early(monkeypatch, tmp_p
 
     assert "unknown subckt" in prompt
     assert "interrupted due to error" in prompt
+
+
+def test_debug_error_keeps_errors_after_the_circuit_banner(monkeypatch, tmp_path):
+    # eSim's own ngspice (nghdl-simulator) prints the error AFTER "Circuit:"
+    # and, having aborted, never prints "Total CPU time"; anything printed
+    # before "No compatibility" must not crowd the error out.
+    prompt = _debug_error_prompt(monkeypatch, tmp_path, (
+        "Warning: Unusual leading characters like ')' in netlist\n"
+        "Note: No compatibility mode selected!\n"
+        "Circuit: * rc filter\n"
+        "Error: unknown subckt: x1 0 c_out v_out lm555n\n"
+        "    Simulation interrupted due to error!\n"))
+
+    assert "unknown subckt" in prompt
+    assert "Unusual leading characters" in prompt

@@ -2963,9 +2963,11 @@ class ChatbotGUI(QWidget):
                 (i for i, ln in enumerate(lines) if "Total CPU time (seconds)" in ln), None
             )
             before_no_compat = lines[:no_compat_index] if no_compat_index else []
+            # An aborted run never prints "Total CPU time"; its error is then
+            # everything after "Circuit:".
             between = (
                 lines[circuit_index + 1:total_cpu_index]
-                if circuit_index is not None and total_cpu_index is not None
+                if circuit_index is not None
                 else []
             )
             filtered_lines = before_no_compat + between
