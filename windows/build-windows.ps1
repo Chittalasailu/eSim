@@ -237,7 +237,8 @@ function Stage-Python {
     }
     & "$pydir\python.exe" -m pip install --upgrade pip --quiet
     & "$pydir\python.exe" -m pip install --quiet `
-        -r (Join-Path $WinDir 'requirements-windows.txt')
+        -r (Join-Path $WinDir 'requirements-windows.txt') `
+        -r (Join-Path $RepoRoot 'requirements-copilot.txt')
     if ($LASTEXITCODE -ne 0) { Die 'pip install failed' }
     # Record the exact resolved set for the release notes / reproducibility.
     & "$pydir\python.exe" -m pip freeze |
@@ -245,6 +246,10 @@ function Stage-Python {
     # Sanity: the GUI toolkit must import.
     & "$pydir\python.exe" -c 'import PyQt6.QtWidgets, PyQt6.Qsci'
     if ($LASTEXITCODE -ne 0) { Die 'PyQt6/Qsci import check failed' }
+    # The AI Assistant's packages (the Ollama runtime itself is fetched at
+    # install time by windows\install_ai_assistant.py, if the user opts in).
+    & "$pydir\python.exe" -c 'import ollama, speech_recognition, pyaudio'
+    if ($LASTEXITCODE -ne 0) { Die 'AI Assistant package import check failed' }
 }
 
 function Stage-Sky130 {
