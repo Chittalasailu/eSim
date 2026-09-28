@@ -258,10 +258,18 @@ class NgspiceWidget(QtWidgets.QWidget):
         return os.path.join(self.project_dir, "ngspice_error.log")
 
     def _write_error_log(self) -> None:
-        """Keep a failed run's console for the AI assistant to explain."""
+        """Keep a failed run's ngspice output for the AI assistant to explain.
+
+        The console also carries eSim's own "[eSim] ..." status lines (the
+        command line, the PID); they are not ngspice output and only distract
+        the model from the error, so they are left out.
+        """
+        console = self.terminal_ui.simulationConsole.toPlainText()
+        output = "".join(line for line in console.splitlines(keepends=True)
+                         if not line.startswith("[eSim]"))
         try:
             with open(self._error_log_path(), "w", encoding="utf-8") as log:
-                log.write(self.terminal_ui.simulationConsole.toPlainText())
+                log.write(output)
         except OSError as e:
             logger.error(f"Could not write ngspice error log: {e}")
 

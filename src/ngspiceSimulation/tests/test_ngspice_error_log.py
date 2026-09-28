@@ -81,3 +81,15 @@ def test_log_is_saved_only_for_real_failures(tmp_path, succeeded, cancelled, sav
         widget, 1, QtCore.QProcess.ExitStatus.NormalExit, MagicMock(), False)
 
     assert widget._write_error_log.called is saved
+
+
+def test_saved_log_is_ngspice_output_without_esim_console_lines(tmp_path):
+    console = ("[eSim] Starting ngspice ...\n"
+               "[eSim] /usr/bin/ngspice -b -r rc.raw rc.cir.out\n"
+               "[eSim] ngspice running (PID 42)\n"
+               "Error: unknown subckt: x1\n")
+    widget = _widget(tmp_path, console=console)
+
+    NgspiceWidget._write_error_log(widget)
+
+    assert (tmp_path / "ngspice_error.log").read_text() == "Error: unknown subckt: x1\n"
