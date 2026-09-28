@@ -152,6 +152,10 @@ def test_missing_ollama_is_installed_with_its_official_script(run_step):
     assert code == 0 and "STEP-RETURNED" in out
     assert "curl -fsSL https://ollama.com/install.sh" in calls
     assert "ollama-installer-ran" in out
+    # Ollama's installer unpacks a .tar.zst and aborts without zstd, which a
+    # fresh Ubuntu 26.04 lacks (found by a full --install in a clean system).
+    apt = re.findall(r"^apt-get install -y (.*)$", calls.split("curl -fsSL")[0], re.M)
+    assert apt and {"curl", "zstd"} <= set(apt[-1].split())
 
 
 def test_server_is_started_for_the_download_when_not_running(run_step):

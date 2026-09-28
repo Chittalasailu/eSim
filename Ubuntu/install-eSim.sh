@@ -1121,7 +1121,8 @@ installChatbot() {
 
     if ! command -v ollama >/dev/null 2>&1; then
         log "Installing Ollama (official installer from ollama.com)"
-        sudo apt-get install -y curl
+        # zstd: Ollama ships a .tar.zst and its installer aborts without it.
+        sudo apt-get install -y curl zstd
         curl -fsSL https://ollama.com/install.sh | sh
     fi
     if ! command -v ollama >/dev/null 2>&1; then
