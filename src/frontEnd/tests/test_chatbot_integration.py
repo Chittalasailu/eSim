@@ -158,9 +158,13 @@ def _recording_chat_widget():
 
     class RecordingChat(base):
         analysed = []
+        debugged = []
 
         def analyse_netlist(self, path):
             RecordingChat.analysed.append(path)
+
+        def debug_error(self, log):
+            RecordingChat.debugged.append(log)
 
     return RecordingChat
 
@@ -248,3 +252,75 @@ def test_no_chatbot_menu_entries_without_chatbot(build_app):
 
     assert _chatbot_menu(window, 0, "/proj/rc_filter") == {}
     assert _chatbot_menu(window, 1, "/proj/rc_filter.cir") == {}
+
+
+@pytest.fixture
+def failed_project(tmp_path, monkeypatch):
+    """A current project whose last ngspice run failed and left its log."""
+    from configuration.Appconfig import Appconfig
+
+    project = tmp_path / "rc_filter"
+    project.mkdir()
+    log = project / "ngspice_error.log"
+    log.write_text("Error: unknown subckt: x1\n")
+    monkeypatch.setitem(Appconfig.current_project, "ProjectName", str(project))
+    return log
+
+
+def _simulation_ended(window, exit_code):
+    from PyQt6 import QtCore
+    window.plotSimulationData(QtCore.QProcess.ExitStatus.NormalExit, exit_code)
+
+
+def test_failed_simulation_is_explained_by_the_assistant(build_app, failed_project):
+    chat = _recording_chat_widget()
+    window = build_app(chat)
+    window.show()
+    window.chatbot_dock.hide()
+
+    _simulation_ended(window, exit_code=1)
+
+    assert chat.debugged == [str(failed_project)]
+    assert window.chatbot_dock.isVisible()
+
+
+def test_failure_without_a_log_is_not_sent(build_app, failed_project):
+    chat = _recording_chat_widget()
+    window = build_app(chat)
+    failed_project.unlink()  # e.g. cancelled or abandoned run
+
+    _simulation_ended(window, exit_code=1)
+
+    assert chat.debugged == []
+
+
+def test_successful_simulation_is_not_sent(build_app, failed_project, monkeypatch):
+    chat = _recording_chat_widget()
+    window = build_app(chat)
+    monkeypatch.setattr(window.obj_Mainview.obj_dockarea, "plottingEditor",
+                        lambda: None)
+
+    _simulation_ended(window, exit_code=0)
+
+    assert chat.debugged == []
+
+
+def test_failed_simulation_without_chatbot(build_app, failed_project):
+    window = build_app(None)
+
+    _simulation_ended(window, exit_code=1)  # must not raise
+
+
+def test_run_abandoned_after_project_closed(build_app, monkeypatch):
+    # Closing the project mid-run destroys the simulation dock, which still
+    # reports a crashed run; by then there is no current project.
+    from PyQt6 import QtCore
+    from configuration.Appconfig import Appconfig
+
+    chat = _recording_chat_widget()
+    window = build_app(chat)
+    monkeypatch.setitem(Appconfig.current_project, "ProjectName", None)
+
+    window.plotSimulationData(QtCore.QProcess.ExitStatus.CrashExit, -1)
+
+    assert chat.debugged == []

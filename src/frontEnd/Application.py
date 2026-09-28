@@ -1321,6 +1321,23 @@ class Application(QtWidgets.QMainWindow):
                                                + str(e))
         else:
             self._set_sim_status("failed")
+            self._explain_simulation_error()
+
+    def _explain_simulation_error(self):
+        """Hand a failed run's ngspice log to the AI assistant, if installed.
+
+        NgspiceWidget saves the log only for a real failure and removes it
+        when a run starts, so a cancelled or abandoned run finds none.
+        """
+        project = self.obj_appconfig.current_project["ProjectName"]
+        if self.chatbot_dock is None or project is None:
+            return
+        log = os.path.join(project, "ngspice_error.log")
+        if not os.path.isfile(log):
+            return
+        self.chatbot_dock.show()
+        self.chatbot_dock.raise_()
+        self.chatbot_window.debug_error(log)
 
     def open_ngspice(self):
         """This Function execute ngspice on current project."""
