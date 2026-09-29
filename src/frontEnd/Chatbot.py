@@ -2328,8 +2328,8 @@ class ChatbotGUI(QWidget):
             "current model — a text-only model cannot see images and will give "
             "completely wrong answers.\n\n"
             "Install a vision model by running this in a terminal:\n"
-            "  ollama pull llava\n\n"
-            "Then restart eSim and select llava from the model dropdown."
+            f"  ollama pull {VISION_MODEL}\n\n"
+            f"Then restart eSim and select {VISION_MODEL} from the model dropdown."
         ))
         self._scroll_to_bottom()
         return False

@@ -201,3 +201,16 @@ def test_chat_window_requires_the_backend_default_text_model():
 
     assert ollama_runner._DEFAULT_TEXT_MODEL in REQUIRED_MODELS
     assert not any("coder" in m for m in REQUIRED_MODELS)
+
+
+def test_missing_vision_model_hint_names_the_configured_model(qapp, monkeypatch):
+    from frontEnd import Chatbot
+
+    gui = MagicMock()
+    monkeypatch.setattr(Chatbot, "_system_bubble", lambda text: text)
+    gui._auto_switch_model.return_value = -1   # no vision model installed
+
+    assert Chatbot.ChatbotGUI._warn_or_switch_to_vision_model(gui) is False
+
+    hint = gui.chat_display.append.call_args[0][0]
+    assert "ollama pull %s" % Chatbot.VISION_MODEL in hint
