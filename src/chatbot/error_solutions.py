@@ -1,5 +1,5 @@
 # error_solutions.py
-from typing import Dict,Any
+from typing import Dict, Any, Optional
 
 ERROR_SOLUTIONS = {
     "no ground": {
@@ -84,8 +84,10 @@ ERROR_SOLUTIONS = {
     }
 }
 
-def get_error_solution(error_message: str) -> Dict[str, Any]:
-    """Get detailed solution for specific error."""
+def get_error_solution(error_message: str) -> Optional[Dict[str, Any]]:
+    """Get detailed solution for specific error (None when there is no text)."""
+    if not error_message:
+        return None
     error_lower = error_message.lower()
     
     for error_key, solution in ERROR_SOLUTIONS.items():
