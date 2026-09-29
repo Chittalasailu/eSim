@@ -2571,7 +2571,7 @@ class ChatbotGUI(QWidget):
             self.model_combo.setEnabled(False)
             if is_ollama_running():
                 self.status_label.setText(
-                    "⚠️ No Ollama models found. Run 'ollama pull qwen2.5-coder:3b' "
+                    "⚠️ No Ollama models found. Run 'ollama pull qwen2.5:3b' "
                     "in a terminal to install one."
                 )
             else:

@@ -290,7 +290,7 @@ class ModelFetchWorker(QThread):
 
 # ── Model Pull Worker ─────────────────────────────────────────────────────────
 # Required models for the chatbot to function correctly
-REQUIRED_MODELS = ["qwen2.5-coder:3b", "nomic-embed-text"]
+REQUIRED_MODELS = ["qwen2.5:3b", "nomic-embed-text"]
 VISION_MODEL    = "minicpm-v"   # optional — only needed for image analysis
 
 class ModelPullWorker(QThread):

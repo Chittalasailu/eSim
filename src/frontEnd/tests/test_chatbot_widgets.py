@@ -190,3 +190,14 @@ def test_bordered_session_buttons_keep_their_exact_size(esim_theme):
 
     assert {(b.minimumSize().width(), b.minimumSize().height())
             for b in (row._rename_btn, row._del_btn)} == {(28, 28)}
+
+
+def test_chat_window_requires_the_backend_default_text_model():
+    # One text model for the whole chatbot. The window used to require
+    # qwen2.5-coder:3b while the backend (and the old setup script) used
+    # qwen2.5:3b, so users downloaded two 3B models.
+    from chatbot import ollama_runner
+    from chatbot.chatbot_thread import REQUIRED_MODELS
+
+    assert ollama_runner._DEFAULT_TEXT_MODEL in REQUIRED_MODELS
+    assert not any("coder" in m for m in REQUIRED_MODELS)

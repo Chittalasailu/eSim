@@ -97,7 +97,7 @@ PIP_PINS=(
 # REQUIRED_MODELS in src/chatbot/chatbot_thread.py -- the chat window downloads
 # any missing one on its first start, which is the surprise installChatbot
 # avoids; Ubuntu/tests/test_chatbot_step.py fails if the two lists drift.
-CHATBOT_MODELS=("qwen2.5-coder:3b" "nomic-embed-text")
+CHATBOT_MODELS=("qwen2.5:3b" "nomic-embed-text")
 
 #-----------------------------------------------------------------------------
 # Terminal UI
