@@ -59,17 +59,28 @@ def _make_stubs():
         sys.modules["numpy"] = np_mod
  
  
+_STUBBED = ("chatbot.error_solutions", "chatbot.image_handler",
+            "chatbot.ollama_runner", "chatbot.knowledge_base")
+_originals = {name: sys.modules.get(name) for name in _STUBBED}
 _make_stubs()
- 
+
 # Now it is safe to import the module under test
 import chatbot.chatbot_core as core  # noqa: E402  (import after stubs)
- 
+
 # Convenient references to the mocks
 _mock_run_ollama     = sys.modules["chatbot.ollama_runner"].run_ollama
 _mock_get_embedding  = sys.modules["chatbot.ollama_runner"].get_embedding
 _mock_search         = sys.modules["chatbot.knowledge_base"].search_knowledge
 _mock_get_error_sol  = sys.modules["chatbot.error_solutions"].get_error_solution
 _mock_analyze        = sys.modules["chatbot.image_handler"].analyze_and_extract
+
+# core has bound the stubs; put the real modules back so the other chatbot
+# test files (which import them in the same pytest session) get the real ones.
+for _name, _module in _originals.items():
+    if _module is None:
+        sys.modules.pop(_name, None)
+    else:
+        sys.modules[_name] = _module
  
  
 # ===========================================================================
