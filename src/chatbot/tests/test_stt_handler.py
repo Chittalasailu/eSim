@@ -9,7 +9,11 @@ from unittest.mock import MagicMock, patch
 SRC_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if SRC_DIR not in sys.path:
     sys.path.insert(0, SRC_DIR)
-from chatbot import stt_handler
+# Offline speech input is optional; sounddevice and vosk are not installed
+# with eSim. stt_handler disables both if either is missing.
+pytest.importorskip("sounddevice")
+pytest.importorskip("vosk")
+from chatbot import stt_handler  # noqa: E402
 class TestSttHandlerVulnerabilities(unittest.TestCase):
     # -------------------------------------------------------------------------
     # 1. Unbounded Queue Growth Verification (High Severity)

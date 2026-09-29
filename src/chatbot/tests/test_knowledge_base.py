@@ -9,7 +9,11 @@ SRC_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 if SRC_DIR not in sys.path:
     sys.path.insert(0, SRC_DIR)
 
-from chatbot import knowledge_base
+# Documentation retrieval is optional and its chromadb dependency is not
+# installed with eSim; skip rather than abort the whole test run.
+pytest.importorskip("chromadb")
+
+from chatbot import knowledge_base  # noqa: E402
 
 class TestKnowledgeBaseVulnerabilities(unittest.TestCase):
 
