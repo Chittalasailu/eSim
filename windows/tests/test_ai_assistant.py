@@ -206,3 +206,33 @@ def test_unexpected_error_still_lets_the_install_finish(machine, monkeypatch, ca
 
     assert helper.main() == 0
     assert "disk full" in capsys.readouterr().out
+
+
+def test_real_download_and_hash_check_against_a_local_server(tmp_path, monkeypatch):
+    # The real download() and hash check, served locally instead of GitHub.
+    import http.server
+    import threading
+
+    payload = os.urandom(3 * (1 << 20) + 17)      # multi-chunk, odd size
+    (tmp_path / "srv").mkdir()
+    (tmp_path / "srv" / "OllamaSetup.exe").write_bytes(payload)
+    handler = lambda *a, **k: http.server.SimpleHTTPRequestHandler(
+        *a, directory=str(tmp_path / "srv"), **k)
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        monkeypatch.setattr(helper, "TEMP_DIR", str(tmp_path))
+        monkeypatch.setattr(helper, "OLLAMA_SETUP", {
+            "url": "http://127.0.0.1:%d/OllamaSetup.exe" % server.server_port,
+            "filename": "OllamaSetup.exe",
+            "sha256": hashlib.sha256(payload).hexdigest(),
+        })
+        ran = []
+        monkeypatch.setattr(helper, "run", lambda cmd: ran.append(cmd) or 0)
+        monkeypatch.setattr(helper, "find_ollama", lambda: "ollama.exe" if ran else None)
+
+        assert helper.install_ollama() == "ollama.exe"
+        assert ran and ran[0][0] == str(tmp_path / "OllamaSetup.exe")
+        assert not (tmp_path / "OllamaSetup.exe").exists()
+    finally:
+        server.shutdown()
