@@ -23,9 +23,11 @@ class TestChatbotThreadVulnerabilities(unittest.TestCase):
         Verify that start_ollama runs ollama serve cleanly on both Windows and Linux.
         """
         import subprocess
-        # Test Windows command selection
+        # Test Windows command selection. CREATE_NO_WINDOW exists only on
+        # Windows builds of Python, so provide it (its real value) here.
         with patch("chatbot.chatbot_thread.os.name", "nt"), \
-             patch("shutil.which", return_value="ollama"):
+             patch("shutil.which", return_value="ollama"), \
+             patch.object(subprocess, "CREATE_NO_WINDOW", 0x08000000, create=True):
             chatbot_thread.start_ollama(stop_flag=lambda: True)
             mock_popen.assert_called_with(
                 ["ollama", "serve"],
