@@ -178,3 +178,15 @@ def test_debug_error_keeps_errors_after_the_circuit_banner(monkeypatch, tmp_path
 
     assert "unknown subckt" in prompt
     assert "Unusual leading characters" in prompt
+
+
+def test_bordered_session_buttons_keep_their_exact_size(esim_theme):
+    # Stylesheet widths exclude the border, so a 1px-bordered 28px button
+    # pinned naively renders 30px.
+    from frontEnd.Chatbot import _SessionItemWidget
+
+    row = _SessionItemWidget("s1", "RC filter", "2026-09-28", msg_count=2)
+    row.ensurePolished()
+
+    assert {(b.minimumSize().width(), b.minimumSize().height())
+            for b in (row._rename_btn, row._del_btn)} == {(28, 28)}

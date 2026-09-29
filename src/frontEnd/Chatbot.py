@@ -396,6 +396,9 @@ def _keep_fixed_button_sizes(root):
     setFixedSize(): the small icon buttons balloon to ~100 px and force the
     chat dock to half the window. A widget's own stylesheet outranks the
     application's, so repeating the intended size there keeps it.
+
+    Stylesheet widths exclude the border, so the pin is measured once and
+    corrected by whatever the button's border added.
     """
     for btn in root.findChildren(QPushButton):
         size = btn.maximumSize()
@@ -403,10 +406,19 @@ def _keep_fixed_button_sizes(root):
                 or btn.property("chatSizePinned")):
             continue
         btn.setProperty("chatSizePinned", True)
-        btn.setStyleSheet(btn.styleSheet() + (
-            f"\nQPushButton {{ min-width: {size.width()}px;"
-            f" max-width: {size.width()}px; min-height: {size.height()}px;"
-            f" max-height: {size.height()}px; padding: 0; }}"))
+        own = btn.styleSheet()
+
+        def pin(w, h):
+            btn.setStyleSheet(own + (
+                f"\nQPushButton {{ min-width: {w}px; max-width: {w}px;"
+                f" min-height: {h}px; max-height: {h}px; padding: 0; }}"))
+
+        pin(size.width(), size.height())
+        btn.ensurePolished()
+        extra_w = btn.minimumWidth() - size.width()
+        extra_h = btn.minimumHeight() - size.height()
+        if extra_w or extra_h:
+            pin(size.width() - extra_w, size.height() - extra_h)
 
 
 # ── Smart input field ─────────────────────────────────────────────────────────
