@@ -360,3 +360,26 @@ def test_both_installers_use_the_same_sky130_repair_helper():
     assert 'unknown PDK revision' in helper
     assert 'Sky130Prepare.py' in _read(BUILD_PS1)
     assert 'Sky130Prepare.py' in _read(INSTALL_SH)
+
+
+# ── Windows build: files and tools a real build needs ───────────────────────
+
+def _ps1_function(name):
+    return _read(BUILD_PS1).split('function %s' % name, 1)[1].split('\nfunction ', 1)[0]
+
+
+def _manifest_json():
+    with open(MANIFEST, encoding='utf-8') as fh:
+        return json.load(fh)
+
+
+def test_every_windows_script_the_installer_runs_is_staged():
+    # Stage-App drops the repo windows/ dir and copies runtime files back one
+    # by one. installer.iss only runs a script if it exists, so a missing one
+    # fails silently (the uninstall cleanup was skipped on every uninstall).
+    scripts = sorted(set(re.findall(r"windows\\([A-Za-z0-9_]+\.py)", _read(ISS))))
+    assert 'uninstall_cleanup.py' in scripts
+    copies = [l for l in _ps1_function('Stage-App').splitlines()
+              if l.strip().startswith('Copy-Item') and '$stageWin' in l]
+    missing = [s for s in scripts if not any("'%s'" % s in l for l in copies)]
+    assert missing == []

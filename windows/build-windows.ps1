@@ -222,6 +222,9 @@ installer  : Inno Setup (windows/installer.iss)
     $stageWin = Join-Path $Stage 'windows'
     New-Item -ItemType Directory -Force -Path $stageWin | Out-Null
     Copy-Item (Join-Path $WinDir 'windows_bootstrap.py') (Join-Path $stageWin 'windows_bootstrap.py') -Force
+    # installer.iss runs it on uninstall (only if present) to remove the
+    # per-user config and KiCad library entries eSim added.
+    Copy-Item (Join-Path $WinDir 'uninstall_cleanup.py') (Join-Path $stageWin 'uninstall_cleanup.py') -Force
     # The installer's AI Assistant task runs install_ai_assistant.py from
     # {app}\windows, and it reads the pinned Ollama download from the
     # manifest next to it.
