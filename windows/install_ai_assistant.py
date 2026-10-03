@@ -103,6 +103,11 @@ def install_ollama():
             return None
         print("Installing Ollama...")
         run([setup, "/VERYSILENT", "/NORESTART", "/SUPPRESSMSGBOXES"])
+        # OllamaSetup always launches its tray app, which pops a Welcome
+        # window over eSim's silent install and keeps running. Close it (and
+        # the server it started); the models are pulled through our own
+        # server below and eSim starts Ollama when the assistant needs it.
+        run(["taskkill", "/im", "ollama app.exe", "/f", "/t"])
     finally:
         if os.path.exists(setup):
             os.remove(setup)

@@ -125,6 +125,9 @@ class Machine:
         self.commands.append([os.path.basename(cmd[0])] + list(cmd[1:]))
         if os.path.basename(cmd[0]) == "OllamaSetup.exe":
             self.installed = True
+            self.server_up = True   # setup starts the Ollama tray app and its server
+        if cmd[0] == "taskkill":
+            self.server_up = False
         if cmd[1:2] == ["pull"] and cmd[2] in self.failing_pulls:
             return 1
         return 0
@@ -179,6 +182,29 @@ def test_missing_ollama_is_downloaded_verified_and_installed_silently(machine, t
     assert "/VERYSILENT" in setup and "/SUPPRESSMSGBOXES" in setup
     assert _pulled(m) == list(REQUIRED_MODELS)
     assert not (tmp_path / "OllamaSetup.exe").exists(), "installer left in TEMP"
+
+
+def test_tray_app_started_by_ollama_setup_is_closed(machine):
+    # OllamaSetup always launches "ollama app.exe", which opens a Welcome
+    # window in the middle of eSim's silent install and keeps running, so a
+    # scripted `Start-Process -Wait` install never returns.
+    m = machine(ollama_installed=False, server_up=False)
+
+    assert helper.main() == 0
+    names = [c[0] for c in m.commands]
+    kill = m.commands[names.index("taskkill")]
+    assert names.index("OllamaSetup.exe") < names.index("taskkill")
+    assert kill[1:] == ["/im", "ollama app.exe", "/f", "/t"]
+    # the models still come down through the helper's own server
+    assert m.started == [m.ollama] and m.stopped == ["server"]
+    assert _pulled(m) == list(REQUIRED_MODELS)
+
+
+def test_a_users_own_ollama_app_is_left_running(machine):
+    m = machine()
+
+    assert helper.main() == 0
+    assert not any(c[0] == "taskkill" for c in m.commands)
 
 
 def test_tampered_download_is_never_run(machine, tmp_path, capsys):
