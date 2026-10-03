@@ -222,6 +222,11 @@ installer  : Inno Setup (windows/installer.iss)
     $stageWin = Join-Path $Stage 'windows'
     New-Item -ItemType Directory -Force -Path $stageWin | Out-Null
     Copy-Item (Join-Path $WinDir 'windows_bootstrap.py') (Join-Path $stageWin 'windows_bootstrap.py') -Force
+    # The installer's AI Assistant task runs install_ai_assistant.py from
+    # {app}\windows, and it reads the pinned Ollama download from the
+    # manifest next to it.
+    Copy-Item (Join-Path $WinDir 'install_ai_assistant.py') (Join-Path $stageWin 'install_ai_assistant.py') -Force
+    Copy-Item (Join-Path $WinDir 'deps-manifest.json') (Join-Path $stageWin 'deps-manifest.json') -Force
 }
 
 function Stage-Python {

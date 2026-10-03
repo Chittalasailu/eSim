@@ -80,6 +80,17 @@ def test_build_bundles_the_chat_windows_python_packages():
     assert re.search(r"(?im)^pyaudio\b", _read("requirements-windows.txt"))
 
 
+def test_build_ships_the_helper_and_its_manifest_in_the_install():
+    # The repo windows/ dir is left out of the stage wholesale; files the
+    # installed eSim needs are copied back one by one. Without these two the
+    # AI Assistant task runs python on a missing file (exit 2) and installs
+    # nothing, while setup still reports success.
+    stage_app = re.search(r"function Stage-App \{.*?\n\}", _read("build-windows.ps1"), re.S).group(0)
+    copies = [l for l in stage_app.splitlines() if l.strip().startswith("Copy-Item") and "$stageWin" in l]
+    for name in ("install_ai_assistant.py", "deps-manifest.json"):
+        assert any("'%s'" % name in l for l in copies), "%s is not staged into windows\\" % name
+
+
 def test_ollama_download_is_pinned_to_a_release_not_latest():
     entry = json.loads(_read("deps-manifest.json"))["ollama_setup"]
     assert "/latest/" not in entry["url"]
