@@ -2042,6 +2042,11 @@ class ChatbotGUI(QWidget):
     # ── Ollama status ────────────────────────────────────────────────
 
     def _update_ollama_status(self):
+        # Replacing a check that is still running destroys its QThread
+        # mid-run, which aborts eSim; its result is still on the way.
+        previous = getattr(self, "_status_worker", None)
+        if previous is not None and previous.isRunning():
+            return
         self._status_worker = OllamaStatusWorker()
         self._status_worker.result_signal.connect(self._on_status_result)
         self._status_worker.start()

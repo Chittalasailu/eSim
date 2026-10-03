@@ -214,3 +214,36 @@ def test_missing_vision_model_hint_names_the_configured_model(qapp, monkeypatch)
 
     hint = gui.chat_display.append.call_args[0][0]
     assert "ollama pull %s" % Chatbot.VISION_MODEL in hint
+
+
+def test_status_poll_keeps_a_check_that_is_still_running(monkeypatch):
+    # The panel polls Ollama every 5 s. A check that outlives the interval
+    # (a sleeping or throttled Mac) used to be replaced while running, and Qt
+    # aborts with "QThread: Destroyed while thread is still running".
+    from frontEnd import Chatbot
+
+    started = []
+    monkeypatch.setattr(Chatbot, "OllamaStatusWorker", lambda: started.append(MagicMock()) or started[-1])
+    gui = MagicMock()
+    running = gui._status_worker
+    running.isRunning.return_value = True
+
+    Chatbot.ChatbotGUI._update_ollama_status(gui)
+
+    assert gui._status_worker is running
+    assert started == []
+
+
+def test_status_poll_starts_a_new_check_once_the_last_one_finished(monkeypatch):
+    from frontEnd import Chatbot
+
+    started = []
+    monkeypatch.setattr(Chatbot, "OllamaStatusWorker", lambda: started.append(MagicMock()) or started[-1])
+    gui = MagicMock()
+    gui._status_worker.isRunning.return_value = False
+
+    Chatbot.ChatbotGUI._update_ollama_status(gui)
+
+    assert len(started) == 1
+    assert gui._status_worker is started[0]
+    started[0].start.assert_called_once_with()
