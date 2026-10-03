@@ -406,3 +406,10 @@ def test_kicad_installer_comes_from_kicads_github_release():
     # KiCad publishes the identical file (same sha256) on its GitHub release.
     url = _manifest_json()['kicad_installer']['url']
     assert url.startswith('https://github.com/KiCad/kicad-source-mirror/releases/download/')
+
+
+def test_launcher_gets_a_pinned_gcc_when_msys2_is_skipped():
+    gcc = _manifest_json()['mingw_gcc']
+    assert gcc['url'].startswith('https://github.com/brechtsanders/winlibs_mingw/releases/download/')
+    assert re.fullmatch(r'[0-9a-f]{64}', gcc['sha256'])
+    assert "Get-Dep 'mingw_gcc'" in _ps1_function('Stage-Launcher')

@@ -1009,7 +1009,14 @@ function Stage-Launcher {
         $gcc = (Get-Command gcc -ErrorAction SilentlyContinue).Source
     }
     if (-not $gcc) {
-        Die 'no gcc found for the eSim.exe launcher (stage MSYS2 first, or put a mingw-w64 gcc on PATH)'
+        # -SkipMsys: no MSYS2 gcc. Use the pinned standalone mingw-w64 gcc
+        # (build-machine tool only, nothing from it ships).
+        $gccDir = Join-Path $Build 'mingw64'
+        if (-not (Test-Path "$gccDir\bin\gcc.exe")) {
+            & $7z x (Get-Dep 'mingw_gcc') "-o$Build" -y | Out-Null
+        }
+        $gcc = "$gccDir\bin\gcc.exe"
+        if (-not (Test-Path $gcc)) { Die 'pinned mingw-w64 gcc did not unpack' }
     }
     $bindir = Split-Path $gcc
     $res = Join-Path $Build 'esim_launcher.res.o'

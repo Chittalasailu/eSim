@@ -64,6 +64,13 @@
     "sha256": "0bcb2a409dea17e305a27a6b09555cabe600e984f88570ab72575cd7e93c95e6",
     "notes": "Build-machine tool only (provides ISCC.exe); nothing from it ships inside the eSim installer. Hosted on GitHub releases -- jrsoftware pruned files.jrsoftware.org/is/6/ (older point releases 404 there)."
   },
+  "mingw_gcc": {
+    "version": "gcc 16.2.0 + mingw-w64 14.0.0 (UCRT) r2",
+    "url": "https://github.com/brechtsanders/winlibs_mingw/releases/download/16.2.0posix-14.0.0-ucrt-r2/winlibs-x86_64-posix-seh-gcc-16.2.0-mingw-w64ucrt-14.0.0-r2.zip",
+    "filename": "winlibs-x86_64-posix-seh-gcc-16.2.0-mingw-w64ucrt-14.0.0-r2.zip",
+    "sha256": "d5dbafc4a170e762ca6143151ec918fb9e2c72736fb14cd704abebc6bdd5276a",
+    "notes": "Build-machine tool only: compiles the eSim.exe launcher (gcc + windres) when MSYS2 is skipped (-SkipMsys); with MSYS2 staged its own mingw64 gcc is used instead. Nothing from it ships. sha256 matches the digest GitHub publishes for the release asset."
+  },
   "ollama_setup": {
     "version": "0.34.4",
     "url": "https://github.com/ollama/ollama/releases/download/v0.34.4/OllamaSetup.exe",
