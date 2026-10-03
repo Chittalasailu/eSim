@@ -399,3 +399,10 @@ def test_bleyer_iverilog_setup_is_run_not_7z_extracted():
     assert '$7z' not in body
     assert '/VERYSILENT' in body and '/DIR=' in body
     assert 'unins000.exe' in body, 'the temporary install must be removed again'
+
+
+def test_kicad_installer_comes_from_kicads_github_release():
+    # downloads.kicad.org ended the 1.1 GB download early on every attempt;
+    # KiCad publishes the identical file (same sha256) on its GitHub release.
+    url = _manifest_json()['kicad_installer']['url']
+    assert url.startswith('https://github.com/KiCad/kicad-source-mirror/releases/download/')
