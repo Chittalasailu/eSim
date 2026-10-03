@@ -325,6 +325,10 @@ function Stage-Ngspice {
             New-Item -ItemType Directory -Force -Path (Split-Path $shim) | Out-Null
             Copy-Item $dst $shim -Recurse
         }
+        # The zip's ngspice.exe is the GUI build and prints nothing on
+        # stdout; eSim's batch runs and the SKY130 smoke test need the
+        # console build, which the zip ships as ngspice_con.exe.
+        Copy-Item "$shim\bin\ngspice_con.exe" "$shim\bin\ngspice.exe" -Force
     }
 }
 

@@ -383,3 +383,10 @@ def test_every_windows_script_the_installer_runs_is_staged():
               if l.strip().startswith('Copy-Item') and '$stageWin' in l]
     missing = [s for s in scripts if not any("'%s'" % s in l for l in copies)]
     assert missing == []
+
+
+def test_skipsimbuild_ngspice_shim_is_the_console_build():
+    # The official zip's ngspice.exe is the GUI build and prints nothing on
+    # stdout, so the SKY130 smoke test (and eSim's batch runs) read no output.
+    shim = _ps1_function('Stage-Ngspice').split('if ($SkipSimBuild)', 1)[1]
+    assert re.search(r"ngspice_con\.exe.*ngspice\.exe", shim)
