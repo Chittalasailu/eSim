@@ -390,3 +390,12 @@ def test_skipsimbuild_ngspice_shim_is_the_console_build():
     # stdout, so the SKY130 smoke test (and eSim's batch runs) read no output.
     shim = _ps1_function('Stage-Ngspice').split('if ($SkipSimBuild)', 1)[1]
     assert re.search(r"ngspice_con\.exe.*ngspice\.exe", shim)
+
+
+def test_bleyer_iverilog_setup_is_run_not_7z_extracted():
+    # Bleyer's setup is an Inno Setup 6.1 installer, which 7-Zip cannot open
+    # ("Cannot open the file as archive").
+    body = _ps1_function('Stage-Iverilog')
+    assert '$7z' not in body
+    assert '/VERYSILENT' in body and '/DIR=' in body
+    assert 'unins000.exe' in body, 'the temporary install must be removed again'
