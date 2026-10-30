@@ -7,6 +7,8 @@ import time
 import threading
 import ollama
 from PyQt6.QtCore import QThread, pyqtSignal
+
+from . import manual_search
 # ── Optional imports ──────────────────────────────────────────────────────────
 
 try:
@@ -366,6 +368,14 @@ def _smart_num_predict(user_messages: list, user_override: int = 1024) -> int:
 
 # ── Text chat worker ──────────────────────────────────────────────────────────
 
+# Longer user messages are pasted netlists or simulation logs, not questions
+# the manual can answer.
+_MANUAL_QUERY_MAX_CHARS = 1000
+# Up to three manual sections (~1000 tokens) plus history do not fit the
+# default 1024-token window.
+_MANUAL_NUM_CTX = 4096
+
+
 class OllamaWorker(QThread):
     response_signal = pyqtSignal(str)
     status_signal = pyqtSignal(str)
@@ -383,6 +393,15 @@ class OllamaWorker(QThread):
     def stop(self):
         self._stop_requested = True
 
+    def _manual_context(self):
+        """Manual sections for the latest question; "" for pasted netlists/logs."""
+        question = next((line[5:].strip() for line in reversed(self.chat_history)
+                         if line.startswith("User:")), "")
+        if not question or len(question) > _MANUAL_QUERY_MAX_CHARS:
+            return ""
+        self.status_signal.emit("Searching the eSim manual…")
+        return manual_search.manual_context(question)
+
     def run(self):
         try:
             if not _ensure_ollama_running(self):
@@ -391,7 +410,12 @@ class OllamaWorker(QThread):
 
             # config-driven history window + system prompt
             max_lines = int(CONFIG.get("history", {}).get("max_lines", 6))
-            messages = [{"role": "system", "content": _SYSTEM_PROMPT}]
+            system_prompt = _SYSTEM_PROMPT
+            manual = self._manual_context()
+            if manual:
+                # Rules last: small models follow the end of a long prompt best.
+                system_prompt = f"{manual}\n\n{system_prompt}"
+            messages = [{"role": "system", "content": system_prompt}]
             for line in self.chat_history[-max_lines:]:
                 if line.startswith("User:"):
                     messages.append({"role": "user", "content": line[5:].strip()})
@@ -402,6 +426,8 @@ class OllamaWorker(QThread):
 
             # config-driven model options
             num_ctx       = int(CONFIG.get("context_window", {}).get("text_num_ctx", 1024))
+            if manual:
+                num_ctx = max(num_ctx, _MANUAL_NUM_CTX)
             repeat_pen    = float(CONFIG.get("sampling", {}).get("repeat_penalty", 1.08))
             keep_alive    = CONFIG.get("runtime", {}).get("keep_alive", "-1m")
 

@@ -136,3 +136,36 @@ if __name__ == "__main__":
     print("=" * 60)
     print("All tests completed")
     print("=" * 60)
+
+# ------------------------------------------------------------
+# Known ngspice errors, as ngspice prints them
+# ------------------------------------------------------------
+from chatbot.error_solutions import known_errors, known_errors_text  # noqa: E402
+
+
+def test_real_ngspice_messages_are_recognised():
+    log = (
+        "Warning: singular matrix:  check node v1#branch\n"
+        "doAnalyses: TRAN:  Timestep too small; time = 1e-06\n"
+        "Error: Could not find a valid modelname\n"
+        "Error: unknown subckt: x1 0 out lm555n\n"
+        "Warning: gmin stepping failed\n"
+        "Error: no such vector v(out)\n"
+    )
+
+    descriptions = [s["description"] for s in known_errors(log)]
+
+    assert len(descriptions) == 6
+
+
+def test_unknown_errors_get_no_generic_fix():
+    assert known_errors("Error: something nobody has seen before") == []
+    assert known_errors_text("Error: something nobody has seen before") == ""
+    assert known_errors_text("") == ""
+
+
+def test_known_fix_text_names_the_esim_step():
+    text = known_errors_text("Error: unknown subckt: x1 0 out lm555n")
+
+    assert "subcircuit" in text
+    assert "In eSim: KiCad to Ngspice" in text

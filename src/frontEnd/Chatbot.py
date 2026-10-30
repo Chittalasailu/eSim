@@ -26,6 +26,7 @@ from chatbot.chatbot_thread import (
     detect_topic_switch, get_stt_backend,
     VISION_MODEL_KEYWORDS,
 )
+from chatbot.error_solutions import known_errors_text
 from PyQt6.QtWidgets import (
     QWidget, QHBoxLayout, QTextBrowser, QVBoxLayout,
     QLineEdit, QPushButton, QLabel, QComboBox, QApplication,
@@ -3007,7 +3008,12 @@ class ChatbotGUI(QWidget):
             output_file = os.path.join(self.projDir, "erroroutput.txt")
             with open(output_file, "w") as f:
                 f.writelines(filtered_lines)
-            self.chat_history.append(
-                f"User: I got a simulation error. Here is the log:\n{combined_text}"
-            )
+            message = f"I got a simulation error. Here is the log:\n{combined_text}"
+            known = known_errors_text(combined_text)
+            if known:
+                message += (
+                    "\n\neSim's list of known errors has these fixes for it:\n"
+                    f"{known}"
+                )
+            self.chat_history.append(f"User: {message}")
             self.debug_ollama()

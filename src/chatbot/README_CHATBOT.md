@@ -14,17 +14,44 @@ talks to a local [Ollama](https://ollama.com) server on `localhost:11434`.
 | `src/frontEnd/Chatbot.py` | `ChatbotGUI`: the chat panel (bubbles, history sidebar, model picker, image staging, mic, netlist and error analysis). |
 | `src/chatbot/chatbot_thread.py` | `QThread` workers the panel uses (`OllamaWorker`, `OllamaVisionWorker`, `MicWorker`, model fetch/pull, status), `start_ollama()`, `REQUIRED_MODELS`, `VISION_MODEL`. |
 | `src/chatbot/config.json` | System prompts, context sizes, sampling, history length for the panel. |
-| `src/chatbot/chatbot_core.py` | Keyword router (`handle_input`) with documentation retrieval, known-error table and OCR. **Not called by the panel.** |
+| `src/chatbot/manual_search.py` | Looks up the bundled user manual for the panel (see *Manual lookup*). |
+| `src/chatbot/error_solutions.py` | Known ngspice/eSim error table; `known_errors_text()` is used by `debug_error()`. |
+| `src/chatbot/chatbot_core.py` | Keyword router (`handle_input`) with ChromaDB retrieval and OCR. **Not called by the panel.** |
 | `src/chatbot/ollama_runner.py` | Non-streaming Ollama client used by `chatbot_core` and `knowledge_base`. |
-| `src/chatbot/knowledge_base.py`, `src/ingest.py`, `src/manuals/` | ChromaDB documentation retrieval (RAG). Not called by the panel. |
+| `src/chatbot/knowledge_base.py`, `src/ingest.py`, `src/manuals/` | ChromaDB documentation retrieval for `chatbot_core`. Not called by the panel. |
 | `src/chatbot/image_handler.py` | PaddleOCR + vision analysis for `chatbot_core`. Not called by the panel. |
 | `src/chatbot/stt_handler.py` | Offline Vosk speech-to-text. Not called by the panel. |
-| `src/chatbot/error_solutions.py` | Known ngspice/eSim error table for `chatbot_core`. |
 
-The panel is the only path users reach. It sends the system prompt plus the
-last lines of the conversation straight to Ollama and streams the reply;
-`chatbot_core`'s routing, retrieval and OCR are exercised only by tests. Wiring
-them in would change behaviour and is a separate piece of work.
+The panel is the only path users reach. It sends the system prompt, any
+matching manual sections and the last lines of the conversation to Ollama and
+streams the reply. `chatbot_core` is exercised only by tests: it needs
+`chromadb` and `paddleocr`, which do not install on the Python versions eSim
+2.6 supports, and it returns whole replies instead of streaming them.
+
+## Manual lookup
+
+`manual_search.py` answers eSim questions from
+`library/browser/User-Manual/eSim.html`, the manual eSim already ships and
+opens from **Help → User Manual**.
+
+- **Index.** The HTML is split at its `h1`–`h4` headings (dropping *Contents*
+  and *References*) into chunks of at most ~1200 characters (78 chunks), each
+  embedded with `nomic-embed-text` (already in `REQUIRED_MODELS`) and cached
+  in `~/.esim/ai_assistant/manual_index.json` with the manual's SHA-256. A
+  changed manual or embedding model rebuilds the index on the next question.
+- **Search.** The question is embedded and the three chunks with the highest
+  cosine similarity of at least `MIN_SCORE` (0.65) are kept. On the shipped
+  manual, eSim questions score 0.69–0.84 against the right section and
+  unrelated questions stay below 0.61.
+- **Prompt.** `OllamaWorker._manual_context()` searches with the latest user
+  message, skipping messages over 1000 characters (pasted netlists and logs).
+  The sections go *before* `config.json`'s rules in the system prompt, and
+  `num_ctx` is raised to at least 4096 for that request.
+- **Failure.** Any error (Ollama down, model missing, manual not found) is
+  printed and the question is answered without the manual.
+
+It needs no package beyond `ollama`; the vectors are compared in plain Python
+(78 × 768 floats).
 
 ## Hooks into eSim
 
@@ -53,7 +80,10 @@ them in would change behaviour and is a separate piece of work.
   `No compatibility mode selected!` plus what follows `Circuit:` (up to
   `Total CPU time` when the run got that far), and falls back to the whole log
   when that leaves nothing — eSim's nghdl-simulator ngspice prints parse
-  errors after `Circuit:` and never reaches `Total CPU time`.
+  errors after `Circuit:` and never reaches `Total CPU time`. When the log
+  contains a key of `ERROR_SOLUTIONS` (the entries added for this match
+  ngspice's own wording, e.g. `timestep too small`, `unknown subckt`), the
+  matching fixes are appended to the message so the model explains them.
 
 ## eSim theme gotcha
 
@@ -122,6 +152,8 @@ python3 -m pytest Ubuntu/tests/test_chatbot_step.py
 ```
 
 The `frontEnd` tests replace `ChatbotGUI` with a stand-in or disable its
-Ollama start-up, so they need no Ollama server. Many tests under
+Ollama start-up, so they need no Ollama server. `src/chatbot/tests/conftest.py`
+blocks embedding calls and redirects the manual index to a temporary folder,
+so no test reaches Ollama or the user's `~/.esim`. Many tests under
 `src/chatbot/tests` document known weaknesses of `chatbot_core` and its
 helpers ("vulnerability" tests) and assert the current behaviour.

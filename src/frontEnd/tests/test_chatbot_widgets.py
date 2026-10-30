@@ -180,6 +180,23 @@ def test_debug_error_keeps_errors_after_the_circuit_banner(monkeypatch, tmp_path
     assert "Unusual leading characters" in prompt
 
 
+def test_debug_error_adds_the_known_fix_for_a_recognised_error(monkeypatch, tmp_path):
+    prompt = _debug_error_prompt(monkeypatch, tmp_path, (
+        "Error: unknown subckt: x1 0 c_out v_out lm555n\n"
+        "    Simulation interrupted due to error!\n"))
+
+    assert "known errors" in prompt
+    assert "Subcircuits tab" in prompt
+
+
+def test_debug_error_adds_no_fix_for_an_unknown_error(monkeypatch, tmp_path):
+    prompt = _debug_error_prompt(monkeypatch, tmp_path, (
+        "Error: something nobody has seen before\n"
+        "    Simulation interrupted due to error!\n"))
+
+    assert "known errors" not in prompt
+
+
 def test_bordered_session_buttons_keep_their_exact_size(esim_theme):
     # Stylesheet widths exclude the border, so a 1px-bordered 28px button
     # pinned naively renders 30px.

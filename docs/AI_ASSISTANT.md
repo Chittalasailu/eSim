@@ -67,15 +67,21 @@ shows **Live** in its header once a model is ready. The model in use is shown
 in the drop-down next to the ≡ (chat history) button.
 
 - **Ask a question.** Type in the box at the bottom and press Enter or ➤.
-  ↑/↓ recalls earlier questions.
+  ↑/↓ recalls earlier questions. For questions about using eSim, the
+  assistant first looks up the eSim user manual that ships with eSim and
+  answers from the matching sections ("Searching the eSim manual…" shows
+  while it does). The first lookup indexes the manual, which takes a few
+  seconds; later ones are immediate.
 - **Analyse a netlist.** Right-click a project in the Project Explorer and
   choose **Analyze Project Netlist** (uses `<project>.cir.out`), or right-click
   a `.cir`, `.cir.out` or `.net` file and choose **Analyze this Netlist**.
   Generate the netlist first (KiCad-to-Ngspice conversion).
 - **Explain a failed simulation.** When a simulation fails, the assistant
-  opens and explains ngspice's error automatically. The error output is also
-  kept as `ngspice_error.log` in the project folder; it is removed when the
-  next simulation starts.
+  opens and explains ngspice's error automatically. For common ngspice errors
+  (for example *Timestep too small*, *unknown subckt*, *singular matrix*) it
+  also gives the matching fix from eSim's list of known errors. The error
+  output is also kept as `ngspice_error.log` in the project folder; it is
+  removed when the next simulation starts.
 - **Ask about a schematic image.** Attach an image with 📎 or drag it into the
   panel. This needs a vision model, which the installers do not download
   (5.5 GB):
@@ -96,6 +102,7 @@ in the drop-down next to the ≡ (chat history) button.
 |---|---|
 | Chat history | `~/.esim/chat_sessions/` |
 | Pasted images | `~/.esim/clipboard_images/` |
+| Index of the eSim manual | `~/.esim/ai_assistant/manual_index.json` (rebuilt automatically when the manual changes; safe to delete) |
 | Models | Ollama's model store (managed by Ollama; `ollama list` shows them, `ollama rm <model>` deletes one) |
 
 ## Troubleshooting
@@ -110,9 +117,10 @@ in the drop-down next to the ≡ (chat history) button.
 
 ## Limitations
 
-- Answers come from a small local model and can be wrong. The assistant does
-  not look up the eSim documentation, so check important advice against the
-  eSim manual.
+- Answers come from a small local model and can be wrong. Answers about eSim
+  use the bundled user manual, but questions the manual does not cover (and
+  general electronics questions) are answered from the model alone, so check
+  important advice against the manual.
 - Some ngspice failures (for example a floating node) end with a success exit
   code; eSim treats those runs as successful, so the assistant is not opened
   for them. Ask it about the console output instead.
