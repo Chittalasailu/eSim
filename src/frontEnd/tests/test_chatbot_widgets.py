@@ -264,3 +264,48 @@ def test_status_poll_starts_a_new_check_once_the_last_one_finished(monkeypatch):
     assert len(started) == 1
     assert gui._status_worker is started[0]
     started[0].start.assert_called_once_with()
+
+
+def test_dark_colours_swap_one_to_one_and_back():
+    from frontEnd import Chatbot
+
+    css = "QWidget { background:#ffffff; color:#1a1a2e; border:1px solid #ccc; }"
+    dark = Chatbot._themed(css, dark=True)
+
+    assert "#0e1728" in dark and "#f4f8ff" in dark and "#56677f" in dark
+    assert Chatbot._themed(dark, dark=False) == css.replace("#ccc", "#cccccc")
+    # Accent colours that read on both backgrounds are left alone.
+    assert Chatbot._themed("color:#0095f6;", dark=True) == "color:#0095f6;"
+    dark_values = list(Chatbot._DARK_COLOURS.values())
+    assert len(set(dark_values)) == len(dark_values)
+    assert not set(dark_values) & set(Chatbot._DARK_COLOURS)
+
+
+def test_panel_follows_a_switch_to_the_dark_theme(qapp, monkeypatch):
+    from frontEnd import Chatbot, theme_utils
+
+    monkeypatch.setattr(theme_utils, "_CURRENT_DARK", False)
+    # No Ollama probing or server start from a unit test.
+    monkeypatch.setattr(Chatbot.ChatbotGUI, "_startup_check", lambda self: None)
+    monkeypatch.setattr(Chatbot.ChatbotGUI, "_update_ollama_status", lambda self: None)
+    gui = Chatbot.ChatbotGUI()
+    gui.chat_display.append(Chatbot._bot_bubble("hello", "10:00"))
+    assert "#fafafa" in gui.chat_display.styleSheet()
+
+    monkeypatch.setattr(theme_utils, "_CURRENT_DARK", True)
+    gui._apply_chat_theme()
+
+    assert "#fafafa" not in gui.chat_display.styleSheet()
+    assert "#0b1424" in gui.chat_display.styleSheet()
+    assert "#1c2a40" in gui.chat_display.toHtml()  # bot bubble background
+    gui.deleteLater()
+
+
+def test_dark_theme_never_changes_message_text():
+    from frontEnd import Chatbot
+
+    html = Chatbot._bot_bubble("Issue #555 and colour #333 are text", "10:00")
+    dark = Chatbot._themed_markup(html, dark=True)
+
+    assert "Issue #555 and colour #333 are text" in dark
+    assert "#1c2a40" in dark  # the bubble itself is recoloured

@@ -33,9 +33,10 @@ from PyQt6.QtWidgets import (
     QFileDialog, QDialog, QListWidget, QListWidgetItem, QFrame,
     QScrollArea, QSlider, QInputDialog, QWIDGETSIZE_MAX
 )
-from PyQt6.QtCore import QTimer, Qt, pyqtSignal, QSize, QThread
+from PyQt6.QtCore import QEvent, QTimer, Qt, pyqtSignal, QSize, QThread
 from PyQt6.QtGui import QTextCursor, QKeyEvent, QDragEnterEvent, QDropEvent
 from configuration.Appconfig import Appconfig
+from frontEnd import theme_utils
 from datetime import datetime
 import re
 import json
@@ -51,6 +52,85 @@ _IMG_FILTER = "Images (*.png *.jpg *.jpeg *.bmp *.gif *.tiff)"
 _IMAGE_EXTS = {'.png', '.jpg', '.jpeg', '.bmp', '.gif', '.tiff', '.tif', '.webp'}
 
 _MAX_ERROR_LOG_LINES = 60
+
+# ── Dark theme ────────────────────────────────────────────────────────────────
+# The panel's colours are written for a light background. In eSim's dark theme
+# each one is swapped for its counterpart below; the swap is one-to-one, so the
+# same table also turns dark colours back when the user returns to light.
+_DARK_COLOURS = {
+    # backgrounds and borders
+    "#ffffff": "#0e1728", "#fafafa": "#0b1424", "#f9f9f9": "#0c1626",
+    "#f7f9fc": "#0f192b", "#f7f7f7": "#111c30", "#f5f5f5": "#131f34",
+    "#f0f0f0": "#1c2a40", "#ececec": "#1d2b45", "#e8ecf0": "#22324c",
+    "#e0e0e0": "#2a3a55", "#d4d4d4": "#304260", "#d0d0d0": "#33455f",
+    "#d0dce8": "#2b3d57", "#b0c4e8": "#3a5378",
+    # tinted backgrounds
+    "#f5f8ff": "#111d33", "#f2f7ff": "#10203a", "#f0f6ff": "#12203b",
+    "#f0f4ff": "#13213c", "#f0f4f8": "#15233a", "#eef4ff": "#14233f",
+    "#eaf3ff": "#152640", "#e8f0ff": "#162842", "#e6f0ff": "#172944",
+    "#e0eeff": "#182b47", "#e0e8ff": "#192c48", "#d0e0ff": "#1f3555",
+    "#d0d8f0": "#20344f", "#cce4f7": "#1e3a52",
+    "#fff0f0": "#3a1820", "#fdecea": "#3b1a1f", "#ffe0e0": "#4a1d27",
+    "#ffd0d0": "#5a2230", "#ffc8c8": "#64253a", "#ffb0b0": "#7a2c3c",
+    "#f5c0bc": "#6b2a33",
+    "#fff8e1": "#2e2610", "#fff4e8": "#2f2214", "#fff3e0": "#30230f",
+    "#fff3cd": "#322a10", "#f0c080": "#6b4e1e",
+    "#eefaf0": "#10291c", "#e6f9ee": "#12301f", "#d0f8d0": "#16381f",
+    "#a3d9b5": "#2f6b46",
+    # text
+    "#1a1a2e": "#f4f8ff", "#1e1e1e": "#eef2f8", "#333333": "#dce4ef",
+    "#555555": "#b4c2d6", "#666666": "#a6b5ca", "#777777": "#98a8bf",
+    "#888888": "#8b9bb3", "#999999": "#7d8ea7", "#a0a0a0": "#748599",
+    "#aaaaaa": "#6f819b", "#b0b0b0": "#6a7b94", "#bbbbbb": "#64758e",
+    "#cccccc": "#56677f",
+    # dark text on tinted backgrounds
+    "#7a5800": "#f5c451", "#cc0000": "#ff8a8a", "#c62828": "#ff7b7b",
+    "#b71c1c": "#ff6e6e", "#b86a00": "#ffb347", "#b85c00": "#ffa94d",
+    "#1a7f3c": "#5fe39a", "#1f8b4c": "#6ee7a8", "#e07000": "#ffa04d",
+    "#0055a5": "#6fb8ff", "#006ab8": "#63b3ff", "#0078d4": "#4fb3ff",
+}
+_LIGHT_COLOURS = {dark: light for light, dark in _DARK_COLOURS.items()}
+_HEX_COLOUR = re.compile(r"#(?:[0-9a-fA-F]{6}|[0-9a-fA-F]{3})\b")
+
+
+def _themed(text, dark=None):
+    """Return a stylesheet with its colours set for the theme."""
+    if dark is None:
+        dark = theme_utils.current_theme_is_dark()
+    table = _DARK_COLOURS if dark else _LIGHT_COLOURS
+
+    def swap(match):
+        colour = match.group(0).lower()
+        if len(colour) == 4:
+            colour = "#" + "".join(c * 2 for c in colour[1:])
+        return table.get(colour, match.group(0))
+    return _HEX_COLOUR.sub(swap, text)
+
+
+# Colours in HTML live only in these attributes; message text is never
+# touched, so "#555" typed in a question stays as it is.
+_HTML_COLOUR_ATTR = re.compile(
+    r"""(\b(?:style|bgcolor|color)\s*=\s*)(["'])(.*?)\2""", re.DOTALL)
+
+
+def _themed_markup(html, dark=None):
+    """Return chat HTML with the colours in its style attributes themed."""
+    return _HTML_COLOUR_ATTR.sub(
+        lambda m: m.group(1) + m.group(2) + _themed(m.group(3), dark) + m.group(2), html)
+
+
+def _style(widget, css):
+    widget.setStyleSheet(_themed(css))
+
+
+def _themed_html(render):
+    """Wrap an HTML helper so its output follows the current theme."""
+    def wrapper(*args, **kwargs):
+        return _themed_markup(render(*args, **kwargs))
+    wrapper.__name__ = render.__name__
+    wrapper.__doc__ = render.__doc__
+    return wrapper
+
 _SAVE_DEBOUNCE_MS = 5000
 
 WELCOME_MESSAGE = """
@@ -389,6 +469,13 @@ def _is_image_file(path: str) -> bool:
     return os.path.splitext(path)[1].lower() in _IMAGE_EXTS
 
 
+for _name in ("_typing_bubble", "_user_bubble", "_bot_bubble", "_system_bubble",
+              "_staged_images_bubble", "_netlist_header_bubble",
+              "_image_thumbnail_html", "_topic_reset_banner"):
+    globals()[_name] = _themed_html(globals()[_name])
+del _name
+
+
 def _keep_fixed_button_sizes(root):
     """Restate every fixed-size button's size in its own stylesheet.
 
@@ -410,7 +497,7 @@ def _keep_fixed_button_sizes(root):
         own = btn.styleSheet()
 
         def pin(w, h):
-            btn.setStyleSheet(own + (
+            _style(btn, own + (
                 f"\nQPushButton {{ min-width: {w}px; max-width: {w}px;"
                 f" min-height: {h}px; max-height: {h}px; padding: 0; }}"))
 
@@ -492,7 +579,7 @@ class ChatHistoryViewer(QDialog):
         self.setWindowTitle(raw_title[:60])
         self.setMinimumSize(460, 560)
         self.resize(500, 640)
-        self.setStyleSheet("QDialog { background:#f9f9f9; }")
+        _style(self, "QDialog { background:#f9f9f9; }")
 
         msgs = session.get('messages', [])
         n_usr = sum(1 for m in msgs if m.startswith("User:"))
@@ -507,7 +594,7 @@ class ChatHistoryViewer(QDialog):
 
         top_bar = QWidget()
         top_bar.setFixedHeight(54)
-        top_bar.setStyleSheet("""
+        _style(top_bar, """
             QWidget {
                 background:#ffffff;
                 border-bottom:1px solid #ececec;
@@ -518,18 +605,18 @@ class ChatHistoryViewer(QDialog):
         top_layout.setSpacing(10)
 
         title_lbl = QLabel(raw_title[:50] + ("…" if len(raw_title) > 50 else ""))
-        title_lbl.setStyleSheet(
+        _style(title_lbl, 
             "font-size:14px; font-weight:700; color:#1a1a2e; background:transparent;"
         )
         top_layout.addWidget(title_lbl, 1)
 
         meta_lbl = QLabel(f"{n_usr} msg{'s' if n_usr != 1 else ''}  ·  {updated[:10]}  ·  {kind}")
-        meta_lbl.setStyleSheet("font-size:10px; color:#aaa; background:transparent;")
+        _style(meta_lbl, "font-size:10px; color:#aaa; background:transparent;")
         top_layout.addWidget(meta_lbl)
 
         x_btn = QPushButton("✕")
         x_btn.setFixedSize(26, 26)
-        x_btn.setStyleSheet("""
+        _style(x_btn, """
             QPushButton {
                 font-size:11px; color:#888;
                 background:transparent; border:none; border-radius:13px;
@@ -543,7 +630,7 @@ class ChatHistoryViewer(QDialog):
 
         browser = QTextBrowser()
         browser.setOpenLinks(False)
-        browser.setStyleSheet("""
+        _style(browser, """
             QTextBrowser {
                 background:#f9f9f9;
                 border:none;
@@ -558,13 +645,13 @@ class ChatHistoryViewer(QDialog):
                 html += _user_bubble(line[5:].strip(), "")
             elif line.startswith("Bot:"):
                 html += _bot_bubble(line[4:].strip(), "")
-        browser.setHtml(html if html else "<p style='color:#aaa;text-align:center;padding:20px;'>No messages</p>")
+        browser.setHtml(_themed_markup(html if html else "<p style='color:#aaa;text-align:center;padding:20px;'>No messages</p>"))
         QTimer.singleShot(120, lambda: browser.verticalScrollBar().setValue(browser.verticalScrollBar().maximum()))
         root.addWidget(browser)
 
         bot_bar = QWidget()
         bot_bar.setFixedHeight(52)
-        bot_bar.setStyleSheet("""
+        _style(bot_bar, """
             QWidget {
                 background:#ffffff;
                 border-top:1px solid #ececec;
@@ -574,13 +661,13 @@ class ChatHistoryViewer(QDialog):
         bot_layout.setContentsMargins(16, 0, 16, 0)
 
         info_lbl = QLabel(f"Created {created[:10]}  ·  {n_usr + n_bot} total messages")
-        info_lbl.setStyleSheet("font-size:10px; color:#bbb; background:transparent;")
+        _style(info_lbl, "font-size:10px; color:#bbb; background:transparent;")
         bot_layout.addWidget(info_lbl)
         bot_layout.addStretch()
 
         done_btn = QPushButton("Done")
         done_btn.setFixedHeight(32)
-        done_btn.setStyleSheet("""
+        _style(done_btn, """
             QPushButton {
                 font-size:12px; font-weight:600;
                 padding:4px 22px;
@@ -605,7 +692,7 @@ class _DeleteConfirmDialog(QDialog):
         self.setMinimumWidth(320)
         outer = QWidget(self)
         outer.setObjectName("card")
-        outer.setStyleSheet("""
+        _style(outer, """
             QWidget#card {
                 background: #ffffff;
                 border-radius: 20px;
@@ -617,7 +704,7 @@ class _DeleteConfirmDialog(QDialog):
         card_layout.setSpacing(14)
 
         title_lbl = QLabel("Delete chat?")
-        title_lbl.setStyleSheet("font-size:16px; font-weight:bold; color:#1a1a2e;")
+        _style(title_lbl, "font-size:16px; font-weight:bold; color:#1a1a2e;")
         title_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         card_layout.addWidget(title_lbl)
 
@@ -632,7 +719,7 @@ class _DeleteConfirmDialog(QDialog):
 
         div = QFrame()
         div.setFrameShape(QFrame.Shape.HLine)
-        div.setStyleSheet("color:#f0f0f0;")
+        _style(div, "color:#f0f0f0;")
         card_layout.addWidget(div)
 
         btn_row = QHBoxLayout()
@@ -640,7 +727,7 @@ class _DeleteConfirmDialog(QDialog):
 
         cancel_btn = QPushButton("Cancel")
         cancel_btn.setFixedHeight(40)
-        cancel_btn.setStyleSheet("""
+        _style(cancel_btn, """
             QPushButton {
                 font-size:13px; font-weight:600;
                 background:#f0f0f0; color:#333;
@@ -653,7 +740,7 @@ class _DeleteConfirmDialog(QDialog):
 
         delete_btn = QPushButton("Delete")
         delete_btn.setFixedHeight(40)
-        delete_btn.setStyleSheet("""
+        _style(delete_btn, """
             QPushButton {
                 font-size:13px; font-weight:600;
                 background:#ff3b30; color:white;
@@ -684,7 +771,7 @@ class _SessionItemWidget(QWidget):
         self.title = title
         self.kind = kind
         self.setMinimumHeight(78)
-        self.setStyleSheet("QWidget { background: transparent; }")
+        _style(self, "QWidget { background: transparent; }")
 
         outer = QHBoxLayout(self)
         outer.setContentsMargins(10, 8, 8, 8)
@@ -693,7 +780,7 @@ class _SessionItemWidget(QWidget):
         avatar = QLabel(title[0].upper() if title else "C")
         avatar.setFixedSize(38, 38)
         avatar.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        avatar.setStyleSheet("""
+        _style(avatar, """
             QLabel {
                 background: qlineargradient(
                     x1:0, y1:0, x2:1, y2:1,
@@ -715,12 +802,12 @@ class _SessionItemWidget(QWidget):
         title_row.setSpacing(4)
         title_row.setContentsMargins(0, 0, 0, 0)
         title_lbl = QLabel(title[:22] + ("…" if len(title) > 22 else ""))
-        title_lbl.setStyleSheet(
+        _style(title_lbl, 
             "font-size:12px; font-weight:700; color:#1a1a2e; background:transparent;"
         )
         title_row.addWidget(title_lbl, 1)
         date_lbl = QLabel(date)
-        date_lbl.setStyleSheet("font-size:10px; color:#bbb; background:transparent;")
+        _style(date_lbl, "font-size:10px; color:#bbb; background:transparent;")
         title_row.addWidget(date_lbl)
         text_col.addLayout(title_row)
 
@@ -730,13 +817,13 @@ class _SessionItemWidget(QWidget):
         kind_lbl = QLabel()
         kind_lbl.setText(_session_kind_badge(kind))
         kind_lbl.setTextFormat(Qt.TextFormat.RichText)
-        kind_lbl.setStyleSheet("background:transparent;")
+        _style(kind_lbl, "background:transparent;")
         meta_row.addWidget(kind_lbl)
         if msg_count > 0:
             count_lbl = QLabel(str(msg_count))
             count_lbl.setFixedSize(20, 16)
             count_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            count_lbl.setStyleSheet("""
+            _style(count_lbl, """
                 QLabel {
                     background:#0095f6; color:white;
                     font-size:9px; font-weight:700;
@@ -749,7 +836,7 @@ class _SessionItemWidget(QWidget):
 
         preview_text = (preview[:32] + "…") if len(preview) > 32 else preview
         preview_lbl = QLabel(preview_text if preview_text else "No messages yet")
-        preview_lbl.setStyleSheet("font-size:11px; color:#888; background:transparent;")
+        _style(preview_lbl, "font-size:11px; color:#888; background:transparent;")
         text_col.addWidget(preview_lbl)
 
         outer.addLayout(text_col, 1)
@@ -761,7 +848,7 @@ class _SessionItemWidget(QWidget):
         self._rename_btn = QPushButton("✎")
         self._rename_btn.setFixedSize(28, 28)
         self._rename_btn.setToolTip("Rename this chat")
-        self._rename_btn.setStyleSheet("""
+        _style(self._rename_btn, """
             QPushButton {
                 font-size:12px;
                 background:#f2f7ff;
@@ -777,7 +864,7 @@ class _SessionItemWidget(QWidget):
         self._del_btn = QPushButton("🗑")
         self._del_btn.setFixedSize(28, 28)
         self._del_btn.setToolTip("Delete this chat")
-        self._del_btn.setStyleSheet("""
+        _style(self._del_btn, """
             QPushButton {
                 font-size:12px;
                 background:#fff0f0;
@@ -813,7 +900,7 @@ class ChatSidebar(QWidget):
         super().__init__(parent)
         self.setFixedWidth(290)
         self._all_sessions_cache = []
-        self.setStyleSheet("""
+        _style(self, """
             QWidget {
                 background:#ffffff;
                 border-right:1px solid #ececec;
@@ -826,7 +913,7 @@ class ChatSidebar(QWidget):
 
         top = QWidget()
         top.setFixedHeight(52)
-        top.setStyleSheet("""
+        _style(top, """
             QWidget {
                 background:#ffffff;
                 border-bottom:1px solid #f0f0f0;
@@ -837,14 +924,14 @@ class ChatSidebar(QWidget):
         top_row.setSpacing(8)
 
         title_lbl = QLabel("Chats")
-        title_lbl.setStyleSheet(
+        _style(title_lbl, 
             "font-size:16px; font-weight:700; color:#1a1a2e; background:transparent;"
         )
         top_row.addWidget(title_lbl, 1)
 
         close_btn = QPushButton("✕")
         close_btn.setFixedSize(26, 26)
-        close_btn.setStyleSheet("""
+        _style(close_btn, """
             QPushButton {
                 font-size:11px; color:#888;
                 background:transparent; border:none; border-radius:13px;
@@ -863,7 +950,7 @@ class ChatSidebar(QWidget):
 
         self.new_btn = QPushButton("+ New Chat")
         self.new_btn.setFixedHeight(36)
-        self.new_btn.setStyleSheet("""
+        _style(self.new_btn, """
             QPushButton {
                 font-size:12px; font-weight:600;
                 background:#0095f6; color:white;
@@ -878,7 +965,7 @@ class ChatSidebar(QWidget):
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("Search chats…")
         self.search_input.setFixedHeight(34)
-        self.search_input.setStyleSheet("""
+        _style(self.search_input, """
             QLineEdit {
                 font-size:12px;
                 padding:7px 12px;
@@ -897,7 +984,7 @@ class ChatSidebar(QWidget):
 
         delete_all_btn = QPushButton("Delete All Chats")
         delete_all_btn.setFixedHeight(30)
-        delete_all_btn.setStyleSheet("""
+        _style(delete_all_btn, """
             QPushButton {
                 font-size:11px;
                 font-weight:600;
@@ -916,12 +1003,12 @@ class ChatSidebar(QWidget):
         sep = QFrame()
         sep.setFrameShape(QFrame.Shape.HLine)
         sep.setFixedHeight(1)
-        sep.setStyleSheet("QFrame { background:#f0f0f0; border:none; }")
+        _style(sep, "QFrame { background:#f0f0f0; border:none; }")
         root.addWidget(sep)
 
         self.session_list = QListWidget()
         self.session_list.setSpacing(2)
-        self.session_list.setStyleSheet("""
+        _style(self.session_list, """
             QListWidget {
                 background:#ffffff;
                 border:none;
@@ -940,7 +1027,7 @@ class ChatSidebar(QWidget):
 
         self._empty_lbl = QLabel("No saved chats yet.\nStart a conversation!")
         self._empty_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self._empty_lbl.setStyleSheet("""
+        _style(self._empty_lbl, """
             QLabel {
                 color:#ccc; font-size:12px;
                 padding:30px 10px;
@@ -1066,6 +1153,8 @@ class ChatbotGUI(QWidget):
         self.setMinimumSize(420, 340)
         self.resize(430, 350)
         self.setAcceptDrops(True)
+        # Theme the panel was last coloured for (see _apply_chat_theme).
+        self._chat_dark = theme_utils.current_theme_is_dark()
 
         self.chat_history = []
         self._retry_history = []
@@ -1106,7 +1195,7 @@ class ChatbotGUI(QWidget):
         self._status_poll_timer.start(5000)
 
         self._toast = QLabel("  ✅  Copied!  ", self)
-        self._toast.setStyleSheet("""
+        _style(self._toast, """
             QLabel {
                 background-color:#1a1a2e; color:#ffffff;
                 font-size:12px; font-weight:bold;
@@ -1144,7 +1233,7 @@ class ChatbotGUI(QWidget):
         self._history_btn = QPushButton("≡")
         self._history_btn.setFixedSize(32, 32)
         self._history_btn.setToolTip("Chat history")
-        self._history_btn.setStyleSheet("""
+        _style(self._history_btn, """
             QPushButton {
                 font-size:16px; border:none;
                 border-radius:8px; background:transparent; color:#555;
@@ -1157,7 +1246,7 @@ class ChatbotGUI(QWidget):
 
         self.model_combo = QComboBox(self)
         self.model_combo.setFixedHeight(30)
-        self.model_combo.setStyleSheet("""
+        _style(self.model_combo, """
             QComboBox {
                 font-size:12px; padding:2px 10px;
                 border:1px solid #e0e0e0; border-radius:8px;
@@ -1171,7 +1260,7 @@ class ChatbotGUI(QWidget):
         self._refresh_models_btn = QPushButton("↻")
         self._refresh_models_btn.setFixedSize(28, 28)
         self._refresh_models_btn.setToolTip("Refresh available models")
-        self._refresh_models_btn.setStyleSheet("""
+        _style(self._refresh_models_btn, """
             QPushButton {
                 font-size:14px; border:none;
                 border-radius:8px; background:transparent; color:#555;
@@ -1184,7 +1273,7 @@ class ChatbotGUI(QWidget):
         self._rename_btn = QPushButton("✎")
         self._rename_btn.setFixedSize(28, 28)
         self._rename_btn.setToolTip("Rename current chat")
-        self._rename_btn.setStyleSheet("""
+        _style(self._rename_btn, """
             QPushButton {
                 font-size:13px; border:none;
                 border-radius:8px; background:transparent; color:#555;
@@ -1198,7 +1287,7 @@ class ChatbotGUI(QWidget):
         self._settings_btn.setFixedSize(28, 28)
         self._settings_btn.setToolTip("Model settings")
         self._settings_btn.setCheckable(True)
-        self._settings_btn.setStyleSheet("""
+        _style(self._settings_btn, """
             QPushButton {
                 font-size:14px; border:none;
                 border-radius:8px; background:transparent; color:#555;
@@ -1211,7 +1300,7 @@ class ChatbotGUI(QWidget):
         self._export_btn = QPushButton("⤓")
         self._export_btn.setFixedSize(28, 28)
         self._export_btn.setToolTip("Export current chat")
-        self._export_btn.setStyleSheet("""
+        _style(self._export_btn, """
             QPushButton {
                 font-size:13px; border:none;
                 border-radius:8px; background:transparent; color:#555;
@@ -1224,7 +1313,7 @@ class ChatbotGUI(QWidget):
         self._regen_btn = QPushButton("⟳")
         self._regen_btn.setFixedSize(28, 28)
         self._regen_btn.setToolTip("Regenerate last response")
-        self._regen_btn.setStyleSheet("""
+        _style(self._regen_btn, """
             QPushButton {
                 font-size:13px; border:none;
                 border-radius:8px; background:transparent; color:#555;
@@ -1243,16 +1332,16 @@ class ChatbotGUI(QWidget):
 
         header_sep = QFrame()
         header_sep.setFrameShape(QFrame.Shape.HLine)
-        header_sep.setStyleSheet("color:#ececec; margin:0;")
+        _style(header_sep, "color:#ececec; margin:0;")
         chat_layout.addLayout(header_layout)
         chat_layout.addWidget(header_sep)
 
         self.chat_display = QTextBrowser(self)
         self.chat_display.setOpenLinks(False)
         self.chat_display.setOpenExternalLinks(False)
-        self.chat_display.setHtml(WELCOME_MESSAGE)
+        self.chat_display.setHtml(_themed_markup(WELCOME_MESSAGE))
         self.chat_display.anchorClicked.connect(self._handle_link_click)
-        self.chat_display.setStyleSheet("""
+        _style(self.chat_display, """
             QTextBrowser {
                 background-color:#fafafa;
                 border:none;
@@ -1276,7 +1365,7 @@ class ChatbotGUI(QWidget):
 
         status_layout = QHBoxLayout()
         self.status_label = QLabel("", self)
-        self.status_label.setStyleSheet(
+        _style(self.status_label, 
             "color:#0095f6; font-size:11px; padding:1px 4px; background:transparent;"
         )
         status_layout.addWidget(self.status_label)
@@ -1285,7 +1374,7 @@ class ChatbotGUI(QWidget):
 
         self._settings_panel = QWidget()
         self._settings_panel.setVisible(False)
-        self._settings_panel.setStyleSheet("""
+        _style(self._settings_panel, """
             QWidget {
                 background:#f7f9fc;
                 border-top:1px solid #ececec;
@@ -1299,7 +1388,7 @@ class ChatbotGUI(QWidget):
 
         temp_col = QVBoxLayout()
         self._temp_label = QLabel(f"Precision  {self._temperature:.2f}")
-        self._temp_label.setStyleSheet("font-size:10px; color:#555;")
+        _style(self._temp_label, "font-size:10px; color:#555;")
         temp_col.addWidget(self._temp_label)
 
         self._temp_slider = QSlider(Qt.Orientation.Horizontal)
@@ -1312,7 +1401,7 @@ class ChatbotGUI(QWidget):
 
         tok_col = QVBoxLayout()
         self._tok_label = QLabel(f"Max tokens  {self._num_predict}")
-        self._tok_label.setStyleSheet("font-size:10px; color:#555;")
+        _style(self._tok_label, "font-size:10px; color:#555;")
         tok_col.addWidget(self._tok_label)
 
         self._tok_slider = QSlider(Qt.Orientation.Horizontal)
@@ -1326,7 +1415,7 @@ class ChatbotGUI(QWidget):
         sp_layout.addStretch()
         reset_btn = QPushButton("Reset")
         reset_btn.setFixedHeight(26)
-        reset_btn.setStyleSheet("""
+        _style(reset_btn, """
             QPushButton {
                 font-size:10px; padding:2px 12px;
                 background:#f0f0f0; color:#555;
@@ -1346,7 +1435,7 @@ class ChatbotGUI(QWidget):
             "Tip: install Pillow (pip install Pillow) to auto-downscale\n"
             "large images for faster analysis"
         )
-        self.attach_button.setStyleSheet("""
+        _style(self.attach_button, """
             QPushButton {
                 font-size:16px; background:#f0f0f0;
                 border:none; border-radius:19px;
@@ -1359,7 +1448,7 @@ class ChatbotGUI(QWidget):
         self.mic_button = QPushButton("🎤")
         self.mic_button.setFixedSize(38, 38)
         QTimer.singleShot(200, self._update_mic_tooltip)
-        self.mic_button.setStyleSheet("""
+        _style(self.mic_button, """
             QPushButton {
                 font-size:15px; background:#f0f0f0;
                 border:none; border-radius:19px;
@@ -1373,7 +1462,7 @@ class ChatbotGUI(QWidget):
             self, placeholderText="Message eSim AI…  (↑↓ for history)"
         )
         self.user_input.setMinimumHeight(42)
-        self.user_input.setStyleSheet("""
+        _style(self.user_input, """
             QLineEdit {
                 font-size:14px; padding:10px 18px;
                 border:1.5px solid #e0e0e0; border-radius:21px;
@@ -1393,7 +1482,7 @@ class ChatbotGUI(QWidget):
         self.send_button = QPushButton("➤")
         self.send_button.setFixedSize(40, 40)
         self.send_button.setToolTip("Send Message")
-        self.send_button.setStyleSheet("""
+        _style(self.send_button, """
             QPushButton {
                 font-size:18px; font-weight:600;
                 background-color:#0095f6; color:white;
@@ -1407,7 +1496,7 @@ class ChatbotGUI(QWidget):
 
         self.stop_button = QPushButton("Stop")
         self.stop_button.setFixedHeight(38)
-        self.stop_button.setStyleSheet("""
+        _style(self.stop_button, """
             QPushButton {
                 font-size:13px; font-weight:600; padding:5px 16px;
                 background-color:#ff3b30; color:white;
@@ -1421,7 +1510,7 @@ class ChatbotGUI(QWidget):
         chat_layout.addLayout(input_layout)
 
         self._staging_area = QWidget()
-        self._staging_area.setStyleSheet("QWidget { background:#f5f8ff; border-radius:10px; }")
+        _style(self._staging_area, "QWidget { background:#f5f8ff; border-radius:10px; }")
         self._staging_area.setVisible(False)
         staging_outer = QVBoxLayout(self._staging_area)
         staging_outer.setContentsMargins(6, 6, 6, 4)
@@ -1429,12 +1518,12 @@ class ChatbotGUI(QWidget):
 
         staging_header = QHBoxLayout()
         staged_lbl = QLabel("Images to send:")
-        staged_lbl.setStyleSheet("font-size:11px;color:#555;")
+        _style(staged_lbl, "font-size:11px;color:#555;")
         staging_header.addWidget(staged_lbl)
         staging_header.addStretch()
         clear_all_btn = QPushButton("Remove all")
         clear_all_btn.setFixedHeight(20)
-        clear_all_btn.setStyleSheet("""
+        _style(clear_all_btn, """
             QPushButton {
                 font-size:10px; color:#cc0000; background:transparent;
                 border:none; padding:0 4px;
@@ -1450,7 +1539,7 @@ class ChatbotGUI(QWidget):
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         scroll.setWidgetResizable(True)
-        scroll.setStyleSheet("QScrollArea { border:none; background:transparent; }")
+        _style(scroll, "QScrollArea { border:none; background:transparent; }")
         self._thumb_container = QWidget()
         self._thumb_row = QHBoxLayout(self._thumb_container)
         self._thumb_row.setContentsMargins(0, 0, 0, 0)
@@ -1780,7 +1869,7 @@ class ChatbotGUI(QWidget):
         )
 
     def _rebuild_chat_html_from_history(self):
-        self.chat_display.setHtml(WELCOME_MESSAGE)
+        self.chat_display.setHtml(_themed_markup(WELCOME_MESSAGE))
         self._bot_responses = {}
         self._response_counter = 0
         for line in self.chat_history:
@@ -1891,7 +1980,7 @@ class ChatbotGUI(QWidget):
                 local_counter += 1
 
         self._response_counter = local_counter
-        self.chat_display.setHtml(html)
+        self.chat_display.setHtml(_themed_markup(html))
         QTimer.singleShot(120, lambda: self.chat_display.verticalScrollBar().setValue(
             self.chat_display.verticalScrollBar().maximum()
         ))
@@ -1988,7 +2077,7 @@ class ChatbotGUI(QWidget):
         else:
             self._save_current_session()
 
-        self.chat_display.setHtml(WELCOME_MESSAGE)
+        self.chat_display.setHtml(_themed_markup(WELCOME_MESSAGE))
         # MERGED: combined all state resetting into one reusable helper
         self._reset_session_state()
 
@@ -2013,7 +2102,7 @@ class ChatbotGUI(QWidget):
                     os.remove(_HISTORY_FILE)
             except Exception:
                 pass
-            self.chat_display.setHtml(WELCOME_MESSAGE)
+            self.chat_display.setHtml(_themed_markup(WELCOME_MESSAGE))
 
     # ── Export ────────────────────────────────────────────────────────
 
@@ -2055,7 +2144,7 @@ class ChatbotGUI(QWidget):
     def _on_status_result(self, running: bool):
         if running:
             self.ollama_status_label.setText("🟢 Live")
-            self.ollama_status_label.setStyleSheet("""
+            _style(self.ollama_status_label, """
                 QLabel {
                     font-size:11px; font-weight:bold; padding:2px 10px;
                     border-radius:12px; background-color:#e6f9ee;
@@ -2067,7 +2156,7 @@ class ChatbotGUI(QWidget):
                 self._populate_models()
         else:
             self.ollama_status_label.setText("🔴 Offline")
-            self.ollama_status_label.setStyleSheet("""
+            _style(self.ollama_status_label, """
                 QLabel {
                     font-size:11px; font-weight:bold; padding:2px 10px;
                     border-radius:12px; background-color:#fdecea;
@@ -2193,7 +2282,7 @@ class ChatbotGUI(QWidget):
 
         card = QWidget()
         card.setFixedSize(80, 64)
-        card.setStyleSheet("""
+        _style(card, """
             QWidget {
                 background:#ffffff;
                 border:1px solid #d0d8f0;
@@ -2218,19 +2307,19 @@ class ChatbotGUI(QWidget):
             thumb_lbl.setPixmap(pix)
         else:
             thumb_lbl.setText("🖼")
-            thumb_lbl.setStyleSheet("font-size:20px;background:transparent;")
+            _style(thumb_lbl, "font-size:20px;background:transparent;")
         card_layout.addWidget(thumb_lbl)
 
         fname = os.path.basename(image_path)
         name_lbl = QLabel(fname[:10] + ("…" if len(fname) > 10 else ""))
         name_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        name_lbl.setStyleSheet("font-size:9px;color:#555;background:transparent;")
+        _style(name_lbl, "font-size:9px;color:#555;background:transparent;")
         card_layout.addWidget(name_lbl)
 
         remove_btn = QPushButton("✕", card)
         remove_btn.setFixedSize(16, 16)
         remove_btn.move(62, 2)
-        remove_btn.setStyleSheet("""
+        _style(remove_btn, """
             QPushButton {
                 font-size:9px; font-weight:bold;
                 background:#ff3b30; color:white;
@@ -2637,6 +2726,36 @@ class ChatbotGUI(QWidget):
         self.stop_button.hide()
         self.send_button.show()
 
+    def changeEvent(self, event):
+        super().changeEvent(event)
+        if event.type() in (QEvent.Type.PaletteChange, QEvent.Type.StyleChange):
+            # Never restyle inside Qt's app-wide repolish; see defer_restyle.
+            theme_utils.defer_restyle(self, self._apply_chat_theme)
+
+    def _apply_chat_theme(self):
+        """Recolour the panel and the conversation after eSim's theme changed."""
+        dark = theme_utils.current_theme_is_dark()
+        if dark == self._chat_dark:
+            return
+        self._chat_dark = dark
+        for widget in [self] + self.findChildren(QWidget):
+            if widget.styleSheet():
+                widget.setStyleSheet(_themed(widget.styleSheet(), dark))
+        self._recolour_conversation()
+
+    def _recolour_conversation(self):
+        # Re-rendering the document mid-stream would drop the anchors the
+        # streaming and typing bubbles are located by, so wait for the reply.
+        if self._is_generating:
+            QTimer.singleShot(500, self._recolour_conversation)
+            return
+        bar = self.chat_display.verticalScrollBar()
+        at_bottom = bar.value() >= bar.maximum() - 4
+        position = bar.value()
+        self.chat_display.setHtml(
+            _themed_markup(self.chat_display.toHtml(), self._chat_dark))
+        bar.setValue(bar.maximum() if at_bottom else position)
+
     def _scroll_to_bottom(self):
         self.chat_display.verticalScrollBar().setValue(
             self.chat_display.verticalScrollBar().maximum()
@@ -2933,7 +3052,7 @@ class ChatbotGUI(QWidget):
                 os.remove(session_file)
         except Exception:
             pass
-        self.chat_display.setHtml(WELCOME_MESSAGE)
+        self.chat_display.setHtml(_themed_markup(WELCOME_MESSAGE))
         # MERGED: combined all state resetting into one reusable helper
         self._reset_session_state()
 

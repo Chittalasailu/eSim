@@ -97,8 +97,15 @@ builder that creates fixed-size buttons** (it is already called by
 `ChatbotGUI`, `ChatSidebar`, `_SessionItemWidget`, `ChatHistoryViewer` and
 `_make_thumbnail`).
 
-The panel's own colours are hard-coded for a light background; it does not
-follow eSim's dark theme.
+The panel's own colours are written for a light background. In the dark theme
+`_themed()` swaps each one for its counterpart in `_DARK_COLOURS` (a
+one-to-one table, so the same function turns them back for light). Every
+stylesheet in `Chatbot.py` is set through `_style()` and every bubble helper
+is wrapped with `_themed_html()`, so new widgets and messages come out in the
+current theme; on a theme change `ChatbotGUI._apply_chat_theme()` recolours
+the existing widgets and the conversation (deferred with
+`theme_utils.defer_restyle`, never inside Qt's repolish). **Use `_style()`,
+not `setStyleSheet()`, and add any new light colour to `_DARK_COLOURS`.**
 
 ## Models
 

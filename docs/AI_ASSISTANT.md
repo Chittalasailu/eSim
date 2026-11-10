@@ -124,4 +124,3 @@ in the drop-down next to the ≡ (chat history) button.
 - Some ngspice failures (for example a floating node) end with a success exit
   code; eSim treats those runs as successful, so the assistant is not opened
   for them. Ask it about the console output instead.
-- In the dark theme the chat area itself stays light.
