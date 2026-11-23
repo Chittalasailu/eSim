@@ -174,13 +174,22 @@ def search(question, limit=MAX_SECTIONS, min_score=MIN_SCORE):
             for s, c in scored[:limit] if s >= min_score]
 
 
-def manual_context(question):
-    """Prompt text with the manual sections relevant to `question`, or ""."""
+def relevant_sections(question):
+    """Like `search`, but [] when the manual cannot be searched."""
     try:
-        found = search(question)
+        return search(question)
     except Exception as e:  # Ollama down, model missing, manual not shipped
         print(f"[MANUAL SEARCH] skipped: {e}")
-        return ""
+        return []
+
+
+def section_titles(found):
+    """Titles of `found`, best first, each once (long sections span chunks)."""
+    return list(dict.fromkeys(c["title"] for c in found))
+
+
+def format_context(found):
+    """Prompt text for the chunks returned by `search`, or "" for none."""
     if not found:
         return ""
     sections = "\n\n".join(f"## {c['title']}\n{c['text']}" for c in found)
@@ -189,3 +198,8 @@ def manual_context(question):
         "on them when they cover the question, and do not contradict them.\n\n"
         f"{sections}"
     )
+
+
+def manual_context(question):
+    """Prompt text with the manual sections relevant to `question`, or ""."""
+    return format_context(relevant_sections(question))

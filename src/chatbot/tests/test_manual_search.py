@@ -121,6 +121,12 @@ def test_context_names_the_manual_and_its_sections(manual):
     assert "W - Place wire" in context
 
 
+def test_section_titles_are_listed_once_best_first():
+    found = [{"title": "B"}, {"title": "A"}, {"title": "B"}]
+
+    assert manual_search.section_titles(found) == ["B", "A"]
+
+
 def test_context_is_empty_when_ollama_fails(manual, monkeypatch):
     def broken(texts):
         raise ConnectionError("Ollama is not running")
@@ -128,6 +134,7 @@ def test_context_is_empty_when_ollama_fails(manual, monkeypatch):
     monkeypatch.setattr(manual_search, "_embed", broken)
 
     assert manual_search.manual_context("netlist") == ""
+    assert manual_search.relevant_sections("netlist") == []
 
 
 class _Chat:
@@ -139,6 +146,13 @@ class _Chat:
         return iter([{"message": {"content": "answer"}}])
 
 
+FOUND = [
+    {"title": "5.2.5 Netlist generation", "text": "Click Generate netlist.", "score": 0.8},
+    {"title": "5.2.5 Netlist generation", "text": "Check Default Format.", "score": 0.7},
+    {"title": "5.1.5 Hotkeys", "text": "W - Place wire", "score": 0.66},
+]
+
+
 @pytest.fixture
 def worker_env(monkeypatch):
     chat = _Chat()
@@ -146,11 +160,11 @@ def worker_env(monkeypatch):
     monkeypatch.setattr(chatbot_thread, "_ensure_ollama_running", lambda w: True)
     questions = []
 
-    def context(question):
+    def sections(question):
         questions.append(question)
-        return "MANUAL SECTIONS"
+        return FOUND
 
-    monkeypatch.setattr(chatbot_thread.manual_search, "manual_context", context)
+    monkeypatch.setattr(chatbot_thread.manual_search, "relevant_sections", sections)
     return chat, questions
 
 
@@ -163,7 +177,8 @@ def test_worker_adds_manual_sections_before_the_rules(worker_env):
 
     system = chat.kwargs["messages"][0]["content"]
     assert questions == ["how do I make a netlist?"]
-    assert system.startswith("MANUAL SECTIONS")
+    assert system.startswith("Relevant sections of the eSim user manual")
+    assert "## 5.1.5 Hotkeys\nW - Place wire" in system
     assert system.endswith(chatbot_thread._SYSTEM_PROMPT)
     assert chat.kwargs["options"]["num_ctx"] >= chatbot_thread._MANUAL_NUM_CTX
 
@@ -181,7 +196,7 @@ def test_worker_does_not_search_for_pasted_netlists(worker_env):
 
 def test_worker_keeps_the_normal_window_without_manual_sections(worker_env, monkeypatch):
     chat, _ = worker_env
-    monkeypatch.setattr(chatbot_thread.manual_search, "manual_context", lambda q: "")
+    monkeypatch.setattr(chatbot_thread.manual_search, "relevant_sections", lambda q: [])
     worker = chatbot_thread.OllamaWorker(["User: what is the capital of France?"])
 
     worker.run()
@@ -189,3 +204,24 @@ def test_worker_keeps_the_normal_window_without_manual_sections(worker_env, monk
     assert chat.kwargs["messages"][0]["content"] == chatbot_thread._SYSTEM_PROMPT
     assert chat.kwargs["options"]["num_ctx"] == int(
         chatbot_thread.CONFIG["context_window"]["text_num_ctx"])
+
+
+def test_worker_reports_the_sections_it_used(worker_env):
+    worker = chatbot_thread.OllamaWorker(["User: how do I make a netlist?"])
+    sent = []
+    worker.sources_signal.connect(sent.append)
+
+    worker.run()
+
+    assert sent == [["5.2.5 Netlist generation", "5.1.5 Hotkeys"]]
+
+
+def test_worker_reports_no_sections_without_a_match(worker_env, monkeypatch):
+    monkeypatch.setattr(chatbot_thread.manual_search, "relevant_sections", lambda q: [])
+    worker = chatbot_thread.OllamaWorker(["User: what is the capital of France?"])
+    sent = []
+    worker.sources_signal.connect(sent.append)
+
+    worker.run()
+
+    assert sent == []

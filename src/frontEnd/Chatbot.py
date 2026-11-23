@@ -1,3 +1,4 @@
+import hashlib
 import os
 import sys
 
@@ -321,8 +322,28 @@ def _approx_token_count(text: str) -> int:
     return max(1, len(text) // 4)
 
 
-def _bot_bubble(text, timestamp, response_idx=None):
-    """Render a bot response bubble. If response_idx is given, include Retry/Copy links."""
+def _source_key(text):
+    """Key under which a reply's manual sources are kept and saved."""
+    return hashlib.sha1(text.strip().encode("utf-8")).hexdigest()[:16]
+
+
+def _sources_row(sources):
+    if not sources:
+        return ""
+    titles = " &nbsp;·&nbsp; ".join(
+        _escape_text_preserve_breaks(t) for t in sources)
+    return (
+        '<tr><td style="color:#0055a5;font-size:10px;padding:4px 0 0 2px;">'
+        f'From the eSim manual: {titles}</td></tr>'
+    )
+
+
+def _bot_bubble(text, timestamp, response_idx=None, sources=None):
+    """Render a bot response bubble. If response_idx is given, include Retry/Copy links.
+
+    `sources` are the titles of the manual sections the reply was based on,
+    shown under the bubble so the user can check the answer in the manual.
+    """
     rendered = _render_markdown(text)
 
     if response_idx is not None:
@@ -363,6 +384,7 @@ def _bot_bubble(text, timestamp, response_idx=None):
         '">'
         f'{rendered}'
         '</td></tr>'
+        f'{_sources_row(sources)}'
         f'{footer}'
         '</table>'
         '</td>'
@@ -640,11 +662,14 @@ class ChatHistoryViewer(QDialog):
             }
         """)
         html = ""
+        manual_sources = session.get("manual_sources", {})
         for line in msgs:
             if line.startswith("User:"):
                 html += _user_bubble(line[5:].strip(), "")
             elif line.startswith("Bot:"):
-                html += _bot_bubble(line[4:].strip(), "")
+                text = line[4:].strip()
+                html += _bot_bubble(
+                    text, "", sources=manual_sources.get(_source_key(text)))
         browser.setHtml(_themed_markup(html if html else "<p style='color:#aaa;text-align:center;padding:20px;'>No messages</p>"))
         QTimer.singleShot(120, lambda: browser.verticalScrollBar().setValue(browser.verticalScrollBar().maximum()))
         root.addWidget(browser)
@@ -1159,6 +1184,10 @@ class ChatbotGUI(QWidget):
         self.chat_history = []
         self._retry_history = []
         self._bot_responses = {}
+        # _source_key(reply) -> titles of the manual sections it was based on
+        self._manual_sources = {}
+        # Titles sent by the running worker for the reply it is generating
+        self._pending_sources = []
         self._response_counter = 0
         self._last_user_text = ""
         self._typing_frame = 0
@@ -1659,7 +1688,12 @@ class ChatbotGUI(QWidget):
         self.worker.status_signal.connect(self._on_status_update)
         if hasattr(self.worker, "chunk_signal"):
             self.worker.chunk_signal.connect(self._on_stream_chunk)
+        if hasattr(self.worker, "sources_signal"):
+            self.worker.sources_signal.connect(self._on_manual_sources)
         self.worker.start()
+
+    def _on_manual_sources(self, titles):
+        self._pending_sources = list(titles)
 
     def _find_anchor_cursor(self, anchor_name: str):
         """Generic anchor finder, used for both typing and streaming anchors."""
@@ -1879,7 +1913,8 @@ class ChatbotGUI(QWidget):
                 idx = self._response_counter
                 text = line[4:].strip()
                 self._bot_responses[idx] = text
-                self.chat_display.append(_bot_bubble(text, "", idx))
+                self.chat_display.append(_bot_bubble(
+                    text, "", idx, self._manual_sources.get(_source_key(text))))
                 self._response_counter += 1
         self._scroll_to_bottom()
 
@@ -1934,6 +1969,7 @@ class ChatbotGUI(QWidget):
         saved_images = session.get("images", {})
         self._images_store = saved_images
         self._last_image_paths = []
+        self._manual_sources = dict(session.get("manual_sources", {}))
 
         html = WELCOME_MESSAGE
         html += (
@@ -1976,7 +2012,8 @@ class ChatbotGUI(QWidget):
             elif line.startswith("Bot:"):
                 text = line[4:].strip()
                 self._bot_responses[local_counter] = text
-                html += _bot_bubble(text, "", local_counter)
+                html += _bot_bubble(text, "", local_counter,
+                                    self._manual_sources.get(_source_key(text)))
                 local_counter += 1
 
         self._response_counter = local_counter
@@ -2004,6 +2041,8 @@ class ChatbotGUI(QWidget):
                 self.worker.status_signal.disconnect()
                 if hasattr(self.worker, "chunk_signal"):
                     self.worker.chunk_signal.disconnect()
+                if hasattr(self.worker, "sources_signal"):
+                    self.worker.sources_signal.disconnect()
             except Exception:
                 pass
             self.worker.wait(300)
@@ -2058,6 +2097,8 @@ class ChatbotGUI(QWidget):
             _worker.status_signal.disconnect()
             if hasattr(_worker, "chunk_signal"):
                 _worker.chunk_signal.disconnect()
+            if hasattr(_worker, "sources_signal"):
+                _worker.sources_signal.disconnect()
         except Exception:
             pass
         _worker.response_signal.connect(_on_background_response)
@@ -2583,6 +2624,12 @@ class ChatbotGUI(QWidget):
         except Exception:
             pass
 
+    def _saved_manual_sources(self):
+        """Manual sources of the replies still in the saved messages."""
+        kept = {_source_key(m[4:]) for m in self.chat_history[-40:]
+                if m.startswith("Bot:")}
+        return {k: v for k, v in self._manual_sources.items() if k in kept}
+
     def _save_current_session(self):
         if not self.chat_history:
             return
@@ -2596,6 +2643,7 @@ class ChatbotGUI(QWidget):
                 "messages": self.chat_history[-40:],
                 "kind": self._current_session_kind,
                 "images": self._images_store,
+                "manual_sources": self._saved_manual_sources(),
                 "settings": {
                     "temperature": self._temperature,
                     "num_predict": self._num_predict,
@@ -2713,6 +2761,7 @@ class ChatbotGUI(QWidget):
         self.stop_button.show()
         # MERGED: preserve streaming-state reset so live token rendering works
         self._reset_stream_state()
+        self._pending_sources = []
         self._show_typing_bubble()
 
     def _stop_thinking(self):
@@ -2766,6 +2815,7 @@ class ChatbotGUI(QWidget):
         self.chat_history = []
         self._retry_history = []
         self._bot_responses = {}
+        self._manual_sources = {}
         self._response_counter = 0
         self._last_user_text = ""
         self._viewing_past_session = False
@@ -2792,6 +2842,7 @@ class ChatbotGUI(QWidget):
         # MERGED: connect chunk stream so live token rendering still works.
         if hasattr(self.worker, "chunk_signal"):
             self.worker.chunk_signal.connect(self._on_stream_chunk)
+        self.worker.sources_signal.connect(self._on_manual_sources)
         self.worker.start()
 
     def _launch_vision_worker(self, image_paths, extra_prompt):
@@ -3010,6 +3061,12 @@ class ChatbotGUI(QWidget):
         """
         self._stop_thinking()
         ts = self._stream_ts or _get_time()
+        sources = self._pending_sources
+        self._pending_sources = []
+        if sources and not bot_response.startswith("❌"):
+            self._manual_sources[_source_key(bot_response)] = sources
+        else:
+            sources = None
 
         if self._stream_buf is not None:
             idx = self._stream_idx
@@ -3017,13 +3074,13 @@ class ChatbotGUI(QWidget):
             if anchor_cursor is not None:
                 anchor_cursor.movePosition(QTextCursor.MoveOperation.End, QTextCursor.MoveMode.KeepAnchor)
                 anchor_cursor.removeSelectedText()
-                anchor_cursor.insertHtml(_bot_bubble(bot_response, ts, idx))
+                anchor_cursor.insertHtml(_bot_bubble(bot_response, ts, idx, sources))
             else:
                 # Anchor lost (shouldn't happen) — append as a fallback.
-                self.chat_display.append(_bot_bubble(bot_response, ts, idx))
+                self.chat_display.append(_bot_bubble(bot_response, ts, idx, sources))
         else:
             idx = self._response_counter
-            self.chat_display.append(_bot_bubble(bot_response, ts, idx))
+            self.chat_display.append(_bot_bubble(bot_response, ts, idx, sources))
 
         self._bot_responses[idx] = bot_response
         self._response_counter = max(self._response_counter, idx + 1)

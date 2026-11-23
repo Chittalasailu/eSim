@@ -309,3 +309,67 @@ def test_dark_theme_never_changes_message_text():
 
     assert "Issue #555 and colour #333 are text" in dark
     assert "#1c2a40" in dark  # the bubble itself is recoloured
+
+
+@pytest.fixture
+def chat_gui(qapp, monkeypatch, tmp_path):
+    from frontEnd import Chatbot
+
+    monkeypatch.setattr(Chatbot, "_HISTORY_FILE", str(tmp_path / "history.json"))
+    monkeypatch.setattr(Chatbot, "_SESSIONS_DIR", str(tmp_path / "sessions"))
+    monkeypatch.setattr(Chatbot.ChatbotGUI, "_startup_check", lambda self: None)
+    monkeypatch.setattr(Chatbot.ChatbotGUI, "_update_ollama_status", lambda self: None)
+    gui = Chatbot.ChatbotGUI()
+    yield gui
+    gui.deleteLater()
+
+
+def _ask(gui, question, answer, sources=None):
+    gui.chat_history.append(f"User: {question}")
+    gui._start_thinking()
+    if sources is not None:
+        gui._on_manual_sources(sources)
+    gui.display_response(answer)
+
+
+def test_reply_names_the_manual_sections_it_was_based_on(chat_gui):
+    _ask(chat_gui, "Which key places a wire?", "Press W.",
+         ["5.1.5 Hotkeys", "5.2.2 Wiring the circuit"])
+
+    text = chat_gui.chat_display.toPlainText()
+    assert "From the eSim manual: 5.1.5 Hotkeys" in text
+    assert "5.2.2 Wiring the circuit" in text
+
+
+def test_reply_without_manual_sections_has_no_source_line(chat_gui):
+    _ask(chat_gui, "Which key places a wire?", "Press W.", ["5.1.5 Hotkeys"])
+    _ask(chat_gui, "What is the capital of France?", "Paris.")
+
+    assert chat_gui.chat_display.toPlainText().count("From the eSim manual") == 1
+
+
+def test_error_reply_has_no_source_line(chat_gui):
+    _ask(chat_gui, "Which key places a wire?", "❌ Error: connection refused",
+         ["5.1.5 Hotkeys"])
+
+    assert "From the eSim manual" not in chat_gui.chat_display.toPlainText()
+
+
+def test_manual_sources_survive_a_rebuild_and_a_saved_session(chat_gui):
+    import json
+    from PyQt6.QtWidgets import QTextBrowser
+    from frontEnd import Chatbot
+
+    _ask(chat_gui, "Which key places a wire?", "Press W.", ["5.1.5 Hotkeys"])
+    chat_gui._rebuild_chat_html_from_history()
+    assert "From the eSim manual: 5.1.5 Hotkeys" in chat_gui.chat_display.toPlainText()
+
+    chat_gui._flush_save()
+    path = os.path.join(Chatbot._SESSIONS_DIR, f"{chat_gui._current_session_id}.json")
+    with open(path, encoding="utf-8") as f:
+        session = json.load(f)
+    viewer = Chatbot.ChatHistoryViewer(session)
+    shown = viewer.findChild(QTextBrowser).toPlainText()
+    viewer.deleteLater()
+
+    assert "From the eSim manual: 5.1.5 Hotkeys" in shown

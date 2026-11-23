@@ -380,6 +380,9 @@ class OllamaWorker(QThread):
     response_signal = pyqtSignal(str)
     status_signal = pyqtSignal(str)
     chunk_signal = pyqtSignal(str)
+    # Titles of the manual sections the answer is based on; emitted before
+    # response_signal, only when the manual had matching sections.
+    sources_signal = pyqtSignal(list)
 
     def __init__(self, chat_history, model="",
                  temperature=0.25, num_predict=1024):
@@ -400,7 +403,10 @@ class OllamaWorker(QThread):
         if not question or len(question) > _MANUAL_QUERY_MAX_CHARS:
             return ""
         self.status_signal.emit("Searching the eSim manual…")
-        return manual_search.manual_context(question)
+        found = manual_search.relevant_sections(question)
+        if found:
+            self.sources_signal.emit(manual_search.section_titles(found))
+        return manual_search.format_context(found)
 
     def run(self):
         try:

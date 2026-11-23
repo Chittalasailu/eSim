@@ -47,6 +47,12 @@ opens from **Help → User Manual**.
   message, skipping messages over 1000 characters (pasted netlists and logs).
   The sections go *before* `config.json`'s rules in the system prompt, and
   `num_ctx` is raised to at least 4096 for that request.
+- **Sources.** `OllamaWorker.sources_signal` sends the titles of the sections
+  used (each once, best first) before the reply. `ChatbotGUI` shows them under
+  the reply's bubble (*From the eSim manual: …*) so users can check the answer
+  in the manual, and keeps them in `_manual_sources`, keyed by
+  `_source_key(reply)`; sessions save them as `manual_sources`, so rebuilt
+  conversations and saved chats show them too. Error replies get none.
 - **Failure.** Any error (Ollama down, model missing, manual not found) is
   printed and the question is answered without the manual.
 

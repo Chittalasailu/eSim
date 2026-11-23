@@ -71,7 +71,10 @@ in the drop-down next to the ≡ (chat history) button.
   assistant first looks up the eSim user manual that ships with eSim and
   answers from the matching sections ("Searching the eSim manual…" shows
   while it does). The first lookup indexes the manual, which takes a few
-  seconds; later ones are immediate.
+  seconds; later ones are immediate. An answer based on the manual names the
+  sections it used underneath, for example *From the eSim manual: 5.1.5
+  Hotkeys*; open **Help → User Manual** to read them and check the answer.
+  Answers without that line come from the model alone.
 - **Analyse a netlist.** Right-click a project in the Project Explorer and
   choose **Analyze Project Netlist** (uses `<project>.cir.out`), or right-click
   a `.cir`, `.cir.out` or `.net` file and choose **Analyze this Netlist**.
@@ -120,7 +123,7 @@ in the drop-down next to the ≡ (chat history) button.
 - Answers come from a small local model and can be wrong. Answers about eSim
   use the bundled user manual, but questions the manual does not cover (and
   general electronics questions) are answered from the model alone, so check
-  important advice against the manual.
+  important advice against the manual sections listed under the answer.
 - Some ngspice failures (for example a floating node) end with a success exit
   code; eSim treats those runs as successful, so the assistant is not opened
   for them. Ask it about the console output instead.
